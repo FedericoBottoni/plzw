@@ -15,6 +15,8 @@ int main()
     string line;
     ifstream inFile;
     bool correctness = true;
+    char nProcs = 4;
+
     inFile.open(IN_PATH);
     if (!inFile) {
         cout << "Unable to open file";
@@ -25,20 +27,48 @@ int main()
     }
     inFile.close();
 
-    unsigned int inputLength = input.length();
-    unsigned int* encodedData = new unsigned int[inputLength];
-
-    std::chrono::steady_clock::time_point encoding_begin = std::chrono::steady_clock::now();
+    unsigned int avgRng, inputLength = input.length();
+    unsigned int* encodedData = new unsigned int[inputLength], encodedLength = 0;
+    std::chrono::steady_clock::time_point encoding_begin, encoding_end, decoding_begin, decoding_end;
+    encoding_begin = std::chrono::steady_clock::now();
     const char* input_point = input.c_str();
-    unsigned int encodedLength = encoding_lzw(input_point, input.length(), encodedData);
-    std::chrono::steady_clock::time_point encoding_end = std::chrono::steady_clock::now();
+    unsigned int *encodedBuffLengths = new unsigned int[nProcs];
+    avgRng = inputLength / nProcs;
+    omp_set_num_threads(nProcs);
 
-    encodedData = (unsigned int*)realloc(encodedData, (encodedLength) * sizeof(unsigned int));
+    #pragma omp parallel shared(nProcs), shared(input_point), shared(inputLength), shared(avgRng), shared(encodedLength), shared(encodedData), shared(encodedBuffLengths), default(none)
+    {
+        char idProc = omp_get_thread_num();
+        unsigned int dataBuffLength, *encodedBuff;
+        dataBuffLength = idProc != nProcs - 1 ? avgRng : inputLength - (avgRng * (nProcs - 1));
+        encodedBuff = new unsigned int[dataBuffLength];
+        const char* shifted_input_point = &input_point[avgRng * idProc];
+
+        encodedBuffLengths[idProc] = encoding_lzw(shifted_input_point, dataBuffLength, encodedBuff);
+        #pragma omp barrier
+
+        unsigned int encodedDataOffset = 0;
+        for (unsigned int i = 0; i < idProc; i++) {
+            encodedDataOffset += encodedBuffLengths[i];
+        }
+
+        unsigned int* shifted_encodedData = &encodedData[encodedDataOffset];
+        memcpy(shifted_encodedData, encodedBuff, encodedBuffLengths[idProc] * sizeof(unsigned int));
+
+        #pragma omp single
+        {
+            for (unsigned int i = 0; i < nProcs; i++) {
+                encodedLength += encodedBuffLengths[i];
+            }
+        }
+    } 
+
+    encoding_end = std::chrono::steady_clock::now();
 
 
-    std::chrono::steady_clock::time_point decoding_begin = std::chrono::steady_clock::now();
+    decoding_begin = std::chrono::steady_clock::now();
     string decodedData = decoding_lzw(encodedData, encodedLength);
-    std::chrono::steady_clock::time_point decoding_end = std::chrono::steady_clock::now();
+    decoding_end = std::chrono::steady_clock::now();
 
 
     if (inputLength == decodedData.length()) {
