@@ -7,39 +7,18 @@
 #include <chrono>
 #include "..\PLZW_Serial\lzw.h"
 #define IN_PATH "F:\\Dev\\PLZW\\in.txt"
+#define DEFAULT_NPROCS 4
 
-using namespace std;
-int main()
-{
-    string input;
-    string line;
-    ifstream inFile;
-    bool correctness = true;
-    char nProcs = 4;
-
-    inFile.open(IN_PATH);
-    if (!inFile) {
-        cout << "Unable to open file";
-        exit(1);
-    }
-    while (inFile >> line) {
-        input += line;
-    }
-    inFile.close();
-
-    unsigned int avgRng, inputLength = input.length();
-    unsigned int* encodedData = new unsigned int[inputLength], encodedLength = 0;
-    std::chrono::steady_clock::time_point encoding_begin, encoding_end, decoding_begin, decoding_end;
-    encoding_begin = std::chrono::steady_clock::now();
+unsigned int encoding(int nProcs, string input, unsigned int inputLength, unsigned int* encodedData) {
     const char* input_point = input.c_str();
-    unsigned int *encodedBuffLengths = new unsigned int[nProcs];
+    unsigned int avgRng, encodedLength = 0, *encodedBuffLengths = new unsigned int[nProcs];
     avgRng = inputLength / nProcs;
     omp_set_num_threads(nProcs);
 
     #pragma omp parallel shared(nProcs), shared(input_point), shared(inputLength), shared(avgRng), shared(encodedLength), shared(encodedData), shared(encodedBuffLengths), default(none)
     {
         char idProc = omp_get_thread_num();
-        unsigned int dataBuffLength, *encodedBuff;
+        unsigned int dataBuffLength, * encodedBuff;
         dataBuffLength = idProc != nProcs - 1 ? avgRng : inputLength - (avgRng * (nProcs - 1));
         encodedBuff = new unsigned int[dataBuffLength];
         const char* shifted_input_point = &input_point[avgRng * idProc];
@@ -61,7 +40,38 @@ int main()
                 encodedLength += encodedBuffLengths[i];
             }
         }
-    } 
+    }
+    return encodedLength;
+}
+
+using namespace std;
+int main(int argc, char* argv[])
+{
+    string input;
+    string line;
+    ifstream inFile;
+    bool correctness = true;
+    int nProcs;
+
+    nProcs = DEFAULT_NPROCS;
+    //cout << "Invalid argument '" << argv[1] << "': setting nProc = " << DEFAULT_NPROCS << endl;
+
+    inFile.open(IN_PATH);
+    if (!inFile) {
+        cout << "Unable to open file";
+        exit(1);
+    }
+    while (inFile >> line) {
+        input += line;
+    }
+    inFile.close();
+
+    unsigned int inputLength = input.length();
+    unsigned int* encodedData = new unsigned int[inputLength];
+    std::chrono::steady_clock::time_point encoding_begin, encoding_end, decoding_begin, decoding_end;
+    encoding_begin = std::chrono::steady_clock::now();
+
+    unsigned int encodedLength = encoding(nProcs, input, inputLength, encodedData);
 
     encoding_end = std::chrono::steady_clock::now();
 
