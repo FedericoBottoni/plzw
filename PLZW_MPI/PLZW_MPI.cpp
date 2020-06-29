@@ -11,7 +11,7 @@
 #define IN_PATH "F:\\Dev\\PLZW\\in.txt"
 
 using namespace std;
-unsigned int encoding(string input, int inputLength, int rank, int size, int root, unsigned int* encodedData, int* displs) {
+unsigned int encoding(string input, int inputLength, int rank, int size, int root, unsigned int* encodedData, int* encStartPos) {
 
     unsigned int avgRng, receiveCount;
     unsigned int* startPoint;
@@ -31,13 +31,13 @@ unsigned int encoding(string input, int inputLength, int rank, int size, int roo
     for (unsigned short p = 0; p < size; p++) {
         startPoint[p] = avgRng * p;
         counts[p] = avgRng;
-        displs[p] = avgRng * p;
+        encStartPos[p] = avgRng * p;
     }
     counts[size - 1] = inputLength - (size - 1) * avgRng;
     MPI_Scatterv(
         input.c_str(),
         counts,
-        displs,
+        encStartPos,
         MPI_CHAR,
         inputBuf,
         receiveCount,
@@ -52,7 +52,7 @@ unsigned int encoding(string input, int inputLength, int rank, int size, int roo
 
     for (unsigned short p = 0; p < size; p++) {
         counts[p] = 1;
-        displs[p] = p;
+        encStartPos[p] = p;
     }
 
     MPI_Allgather(
@@ -66,7 +66,7 @@ unsigned int encoding(string input, int inputLength, int rank, int size, int roo
 
     unsigned int encodedLength = 0;
     for (unsigned short p = 0; p < size; p++) {
-        displs[p] = encodedLength;
+        encStartPos[p] = encodedLength;
         encodedLength += encodedLengthBuffs[p];
     }
 
@@ -76,7 +76,7 @@ unsigned int encoding(string input, int inputLength, int rank, int size, int roo
         MPI_INT,
         encodedData,
         encodedLengthBuffs,
-        displs,
+        encStartPos,
         MPI_INT,
         root,
         MPI_COMM_WORLD);
@@ -90,7 +90,7 @@ unsigned int encoding(string input, int inputLength, int rank, int size, int roo
     return encodedLength;
 }
 
-unsigned int decoding(unsigned int* encodedData, int encodedLength, int* displs, int rank, int size, int root, char* decodedData) {
+unsigned int decoding(unsigned int* encodedData, int encodedLength, int* encStartPos, int rank, int size, int root, char* decodedData) {
     unsigned int decodedLength;
     int decodedLengthBuff, encodedLengthBuff;
     int* decodedLengthBuffs = new int[size];
@@ -98,9 +98,9 @@ unsigned int decoding(unsigned int* encodedData, int encodedLength, int* displs,
     int* counts = new int[size];
 
     for (unsigned short p = 0; p < size - 1; p++) {
-        counts[p] = displs[p + 1] - displs[p];
+        counts[p] = encStartPos[p + 1] - encStartPos[p];
     }
-    counts[size - 1] = encodedLength - displs[size - 1];
+    counts[size - 1] = encodedLength - encStartPos[size - 1];
 
     encodedLengthBuff = counts[rank];
     unsigned int* encodedDataBuff = new unsigned int[encodedLengthBuff];
@@ -108,7 +108,7 @@ unsigned int decoding(unsigned int* encodedData, int encodedLength, int* displs,
     MPI_Scatterv(
         encodedData,
         counts,
-        displs,
+        encStartPos,
         MPI_INT,
         encodedDataBuff,
         counts[rank],
@@ -131,7 +131,7 @@ unsigned int decoding(unsigned int* encodedData, int encodedLength, int* displs,
 
     decodedLength = 0;
     for (unsigned short p = 0; p < size; p++) {
-        displs[p] = decodedLength;
+        encStartPos[p] = decodedLength;
         decodedLength += decodedLengthBuffs[p];
     }
 
@@ -141,7 +141,7 @@ unsigned int decoding(unsigned int* encodedData, int encodedLength, int* displs,
         MPI_CHAR,
         decodedData,
         decodedLengthBuffs,
-        displs,
+        encStartPos,
         MPI_CHAR,
         root,
         MPI_COMM_WORLD);
@@ -191,8 +191,8 @@ int main()
     );
 
     unsigned int* encodedData = new unsigned int[inputLength];
-    int* displs = new int[size];
-    int encodedLength = encoding(input, inputLength, rank, size, root, encodedData, displs);
+    int* encStartPos = new int[size];
+    int encodedLength = encoding(input, inputLength, rank, size, root, encodedData, encStartPos);
 
     if (rank == root) {
         encoding_end = std::chrono::steady_clock::now();
@@ -200,12 +200,12 @@ int main()
     /** END ENCODING */
 
 
-    /** BEGIN DECODING: params: "encodedData" and "displs" */
+    /** BEGIN DECODING: params: "encodedData" and "encStartPos" */
     if (rank == root) {
         decoding_begin = std::chrono::steady_clock::now();
     }
     char* decodedData = new char[inputLength];
-    int decodedLength = decoding(encodedData, encodedLength, displs, rank, size, root, decodedData);
+    int decodedLength = decoding(encodedData, encodedLength, encStartPos, rank, size, root, decodedData);
     if (rank == root) {
         decoding_end = std::chrono::steady_clock::now();
     }
@@ -236,7 +236,7 @@ int main()
 
     }
 
-    delete[] displs;
+    delete[] encStartPos;
     delete[] encodedData;
     MPI_Barrier(MPI_COMM_WORLD);
     delete[] decodedData;
