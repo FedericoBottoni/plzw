@@ -1,3 +1,5 @@
+// PLZW_OMP.exe
+
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
