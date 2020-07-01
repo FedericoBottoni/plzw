@@ -28,9 +28,20 @@ void unordered_map_push(char* token, int code, unsigned int tokenLength) {
     link->token = token_pointer;
     link->code = code;
     link->next = unordered_map_head;
-    //printf("a %s\n", link);
     unordered_map_head = link;
-    //printf("b %s\n", unordered_map_head);
+}
+
+void disposeMap() {
+    unordered_map_node* current = unordered_map_head;
+    struct unordered_map_node* next;
+    while (current != NULL)
+    {
+        next = current->next;
+        free(current->token);
+        free(current);
+        current = next;
+    }
+    unordered_map_head = NULL;
 }
 
 unsigned int getCodeFromMap(char* token, int tokenLength) {
@@ -118,6 +129,10 @@ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
         memset(pandc, 0, sizeof(pandc));
     }
     objectCode[out_index] = getCodeFromMap(p, pLength);
+
+    delete[] p;
+    delete[] pandc;
+    disposeMap();
     return out_index;
 }
 
