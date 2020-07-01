@@ -15,17 +15,19 @@
 struct unordered_map_node
 {
     char* token;
+    short tokenSize;
     unsigned int code;
     struct unordered_map_node* next;
 };
 
 struct unordered_map_node* unordered_map_head = NULL;
 
-void unordered_map_push(char* token, int code, unsigned int tokenLength) {
+void unordered_map_push(char* token, int code, short tokenLength) {
     struct unordered_map_node* link = (struct unordered_map_node*)malloc(sizeof(struct unordered_map_node));
     char* token_pointer = (char*)malloc(tokenLength * sizeof(char));
     memcpy(token_pointer, token, tokenLength);
     link->token = token_pointer;
+    link->tokenSize = tokenLength;
     link->code = code;
     link->next = unordered_map_head;
     unordered_map_head = link;
@@ -66,13 +68,13 @@ unsigned int getCodeFromMap(char* token, int tokenLength) {
     return UINT_MAX;
 }
 
-char* getTokenFromMap(unsigned int code) {
+unordered_map_node* getNodeFromMap(unsigned int code) {
     struct unordered_map_node* ptr = unordered_map_head;
 
     while (ptr != NULL) {
         bool equals = true;
         if (ptr->code == code) {
-            return ptr->token;
+            return ptr;
         }
         else {
             ptr = ptr->next;
@@ -87,13 +89,12 @@ bool isTokenInMap(char* token, int tokenLength) {
 }
 
 bool isCodeInMap(unsigned int code) {
-    char* token = getTokenFromMap(code);
+    unordered_map_node* token = getNodeFromMap(code);
     return token != NULL;
 }
 
 int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
 {
-    int mapLength = ALPHABET_LEN;
     char* ch;
     for (unsigned int i = 0; i < ALPHABET_LEN; i++) {
         ch = new char[1];
@@ -136,6 +137,55 @@ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
     return out_index;
 }
 
+unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
+{
+    char* ch;
+    for (unsigned int i = 0; i < ALPHABET_LEN; i++) {
+        ch = new char[1];
+        ch[0] = char(i);
+        unordered_map_push(ch, i, 1);
+    }
+    delete[] ch;
+
+    unsigned int old = op[0], decodedDataLength, n;
+    unordered_map_node* temp_node, * s_node = getNodeFromMap(old);
+    int temp_length, s_length = s_node->tokenSize;
+    char* s = new char[MAX_TOKEN_SIZE], *temp = new char[MAX_TOKEN_SIZE];
+    memcpy(s, s_node->token, s_length);
+    char* c = new char[1];
+    c[0] = s[0];
+    memcpy(decodedData, s, s_length);
+    decodedDataLength = 1;
+    int count = ALPHABET_LEN;
+    for (int i = 0; i < op_length - 1; i++) {
+        n = op[i + 1];
+        if (!isTokenInMap(s, s_length)) {
+            s_node = getNodeFromMap(old);
+            s_length = s_node->tokenSize;
+            memcpy(s, s_node->token, s_length);
+            s[s_length++] = c[0];
+        }
+        else {
+            s_node = getNodeFromMap(n);
+            s_length = s_node->tokenSize;
+            memcpy(s, s_node->token, s_length);
+        }
+        memcpy(&decodedData[decodedDataLength], s, s_length);
+        decodedDataLength += s_length;
+        c[0] = s[0];
+        temp_node = getNodeFromMap(old);
+        temp_length = temp_node->tokenSize;
+        memcpy(temp, temp_node->token, temp_length);
+        temp[temp_length] = c[0];
+        unordered_map_push(temp, count, temp_length + 1);
+        count++;
+        old = n;
+    }
+    delete[] temp;
+    delete[] s;
+    disposeMap();
+    return decodedDataLength;
+}
 
 __global__ void encoding(char *input, unsigned int *inputLength, unsigned int *encodedData, unsigned int* nBlocks) {
     unsigned int block = blockIdx.x;
@@ -177,8 +227,9 @@ int main()
     }
     inFile.close();
 
-    unsigned int nBlocks, inputLength = input.length();
-    unsigned int *dev_encodedData, *dev_inputLength, *dev_nBlocks, *encodedData = new unsigned int[inputLength];
+    unsigned int nBlocks, inputLength = input.length(), inputSize = inputLength * sizeof(char);
+    unsigned int *dev_encodedData, *dev_inputLength, *dev_nBlocks;
+    unsigned int* encodedData = (unsigned int*)malloc(inputLength * sizeof(unsigned int));
     char* dev_input;
     std::chrono::steady_clock::time_point encoding_begin, encoding_end, decoding_begin, decoding_end;
 
@@ -207,17 +258,18 @@ int main()
     encoding_end = std::chrono::steady_clock::now();
 
     encodedData = (unsigned int*)realloc(encodedData, (encodedLength) * sizeof(unsigned int));
+    char* decodedData = (char*)malloc(inputSize);
     //for (unsigned int j = 0; j < encodedLength; j++) {
     //    cout << encodedData[j] << " ";
     //}
 
     decoding_begin = std::chrono::steady_clock::now();
-    string decodedData = ""; //decoding_lzw(encodedData, encodedLength);
+    unsigned int decodedDataLength = decoding_lzw(encodedData, encodedLength, decodedData);
     decoding_end = std::chrono::steady_clock::now();
 
     // cout << decodedData << "\n\n";
 
-    if (inputLength == decodedData.length()) {
+    if (inputLength == decodedDataLength) {
         for (unsigned int j = 0; j < inputLength; j++) {
             correctness = input[j] == decodedData[j];
             if (correctness == 0) {
