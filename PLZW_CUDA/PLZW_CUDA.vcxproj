@@ -155,11 +155,6 @@
       <FileType>CppCode</FileType>
     </CudaCompile>
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\PLZW_Serial\PLZW_Serial.vcxproj">
-      <Project>{77992639-8a5d-451c-b8a8-0d3a0b449e54}</Project>
-    </ProjectReference>
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 11.0.targets" />
