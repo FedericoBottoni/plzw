@@ -22,17 +22,6 @@ struct unordered_map_node
 
 struct unordered_map_node* unordered_map_head = NULL;
 
-void unordered_map_push(char* token, int code, short tokenLength) {
-    struct unordered_map_node* link = (struct unordered_map_node*)malloc(sizeof(struct unordered_map_node));
-    char* token_pointer = (char*)malloc(tokenLength * sizeof(char));
-    memcpy(token_pointer, token, tokenLength);
-    link->token = token_pointer;
-    link->tokenSize = tokenLength;
-    link->code = code;
-    link->next = unordered_map_head;
-    unordered_map_head = link;
-}
-
 void disposeMap() {
     unordered_map_node* current = unordered_map_head;
     struct unordered_map_node* next;
@@ -46,18 +35,34 @@ void disposeMap() {
     unordered_map_head = NULL;
 }
 
+void unordered_map_push(char* token, int code, short tokenLength) {
+    struct unordered_map_node* link = (struct unordered_map_node*)malloc(sizeof(struct unordered_map_node));
+    char* token_pointer = (char*)malloc(tokenLength * sizeof(char));
+    memcpy(token_pointer, token, tokenLength);
+    link->token = token_pointer;
+    link->tokenSize = tokenLength;
+    link->code = code;
+    link->next = unordered_map_head;
+    unordered_map_head = link;
+}
+
 unsigned int getCodeFromMap(char* token, int tokenLength) {
     struct unordered_map_node* ptr = unordered_map_head;
-
     while (ptr != NULL) {
         bool equals = true;
-        for (unsigned int i = 0; i < tokenLength; i++) {
-            char currentTokenChar = ptr->token[i];
-            if (currentTokenChar != token[i]) {
-                equals = false;
-                break;
+        if (tokenLength == ptr->tokenSize) {
+            for (unsigned int i = 0; i < tokenLength; i++) {
+                char currentTokenChar = ptr->token[i];
+                if (currentTokenChar != token[i]) {
+                    equals = false;
+                    break;
+                }
             }
         }
+        else {
+            equals = false;
+        }
+        
         if (equals) {
             return ptr->code;
         }
@@ -126,8 +131,11 @@ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
             p[0] = c[0];
             pLength = 1;
         }
-        memset(c, 0, sizeof(c));
-        memset(pandc, 0, sizeof(pandc));
+        c[0] = NULL;
+        //memset(pandc, 0, sizeof(pandc));
+        if (pLength > MAX_TOKEN_SIZE - 1) {
+            printf("Token-size is not enough big");
+        }
     }
     objectCode[out_index] = getCodeFromMap(p, pLength);
 
@@ -170,6 +178,9 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
             s_length = s_node->tokenSize;
             memcpy(s, s_node->token, s_length);
         }
+        if (s_length > MAX_TOKEN_SIZE - 1) {
+            printf("Token-size is not enough big");
+        }
         memcpy(&decodedData[decodedDataLength], s, s_length);
         decodedDataLength += s_length;
         c[0] = s[0];
@@ -178,6 +189,7 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
         memcpy(temp, temp_node->token, temp_length);
         temp[temp_length] = c[0];
         unordered_map_push(temp, count, temp_length + 1);
+        memset(temp, 0, sizeof(temp));
         count++;
         old = n;
     }
