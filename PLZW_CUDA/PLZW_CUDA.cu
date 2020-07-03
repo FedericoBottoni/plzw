@@ -203,10 +203,27 @@ __global__ void encoding(char *input, unsigned int *inputLength, unsigned int *e
     unsigned int block = blockIdx.x;
     char thid = threadIdx.x;
 
-    //extern __shared__ unsigned int *cache_shared[];
-    //unsigned int* cacheStart = cache_shared[0], *cacheEnd = cache_shared[1], *cache = cache_shared[2];
+    extern __shared__ unsigned int *cache_shared[];
+    unsigned int* inputIndex = cache_shared[0], *cacheStart = cache_shared[1], *cacheEnd = cache_shared[2], *cache = cache_shared[3];
 
-    //printf("tid = %d\n", thid);
+    unsigned int avgRng, encodedLength = 0, * encodedBuffLengths = new unsigned int[*nBlocks];
+    avgRng = *inputLength / *nBlocks;
+
+    unsigned int dataBuffLength, * encodedBuff;
+    dataBuffLength = block != *nBlocks - 1 ? avgRng : *inputLength - (avgRng * (*nBlocks - 1));
+    const char* shifted_input_point = &input[avgRng * (*nBlocks)];
+
+    if (thid == 0) {
+
+    }
+    else if (thid == 1) {
+        while () {
+
+        }
+    }
+    else if (thid == 2) {
+
+    }
 }
 
 using namespace std;
@@ -271,15 +288,10 @@ int main()
 
     encodedData = (unsigned int*)realloc(encodedData, (encodedLength) * sizeof(unsigned int));
     char* decodedData = (char*)malloc(inputSize);
-    //for (unsigned int j = 0; j < encodedLength; j++) {
-    //    cout << encodedData[j] << " ";
-    //}
 
     decoding_begin = std::chrono::steady_clock::now();
     unsigned int decodedDataLength = decoding_lzw(encodedData, encodedLength, decodedData);
     decoding_end = std::chrono::steady_clock::now();
-
-    // cout << decodedData << "\n\n";
 
     if (inputLength == decodedDataLength) {
         for (unsigned int j = 0; j < inputLength; j++) {
@@ -304,5 +316,6 @@ int main()
     cout << "Decoding time: " << std::chrono::duration_cast<std::chrono::milliseconds> (decoding_end - decoding_begin).count() << "[ms]" << std::endl;
 
     delete[] encodedData;
+    delete[] decodedData;
     return 0;
 }
