@@ -50,19 +50,7 @@ unsigned int getCodeFromMap(char* token, int tokenLength) {
     struct unordered_map_node* ptr = unordered_map_head;
     while (ptr != NULL) {
         bool equals = true;
-        if (tokenLength == ptr->tokenSize) {
-            for (unsigned int i = 0; i < tokenLength; i++) {
-                char currentTokenChar = ptr->token[i];
-                if (currentTokenChar != token[i]) {
-                    equals = false;
-                    break;
-                }
-            }
-        }
-        else {
-            equals = false;
-        }
-        
+        equals = tokenLength == ptr->tokenSize && strncmp(ptr->token, token, tokenLength) == 0;
         if (equals) {
             return ptr->code;
         }
@@ -134,7 +122,7 @@ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
         c[0] = NULL;
         //memset(pandc, 0, sizeof(pandc));
         if (pLength > MAX_TOKEN_SIZE - 1) {
-            printf("Token-size is not enough big");
+            printf("Token-size is not enough big\n");
         }
     }
     objectCode[out_index] = getCodeFromMap(p, pLength);
@@ -265,7 +253,7 @@ int main()
     encoding_begin = std::chrono::steady_clock::now();
     const char *input_point = input.c_str();
     nBlocks = DEFAULT_NBLOCKS;
-
+    /*
     cudaMalloc((void**)&dev_input, inputLength * sizeof(char));
     cudaMalloc((void**)&dev_inputLength, sizeof(unsigned int));
     cudaMalloc((void**)&dev_encodedData, inputLength * sizeof(char));
@@ -282,7 +270,7 @@ int main()
     cudaFree(dev_inputLength);
     cudaFree(dev_encodedData);
     cudaFree(dev_nBlocks);
-
+    */
     unsigned int encodedLength = encoding_lzw(input_point, input.length(), encodedData);
     encoding_end = std::chrono::steady_clock::now();
 
