@@ -88,13 +88,11 @@ bool isCodeInMap(unsigned int code) {
 
 int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
 {
-    char* ch;
+    char ch;
     for (unsigned int i = 0; i < ALPHABET_LEN; i++) {
-        ch = new char[1];
-        ch[0] = char(i);
-        unordered_map_push(ch, i, 1);
+        ch = char(i);
+        unordered_map_push(&ch, i, 1);
     }
-    delete[] ch;
 
     int out_index = 0, pLength;
     char *p = new char[MAX_TOKEN_SIZE], * pandc = new char[MAX_TOKEN_SIZE], *c = new char[1];
@@ -135,21 +133,18 @@ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
 
 unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
 {
-    char* ch;
+    char ch;
     for (unsigned int i = 0; i < ALPHABET_LEN; i++) {
-        ch = new char[1];
-        ch[0] = char(i);
-        unordered_map_push(ch, i, 1);
+        ch = char(i);
+        unordered_map_push(&ch, i, 1);
     }
-    delete[] ch;
 
     unsigned int old = op[0], decodedDataLength, n;
     unordered_map_node* temp_node, * s_node = getNodeFromMap(old);
     int temp_length, s_length = s_node->tokenSize;
     char* s = new char[MAX_TOKEN_SIZE], *temp = new char[MAX_TOKEN_SIZE];
     memcpy(s, s_node->token, s_length);
-    char* c = new char[1];
-    c[0] = s[0];
+    char* c = s;
     memcpy(decodedData, s, s_length);
     decodedDataLength = 1;
     int count = ALPHABET_LEN;
@@ -159,7 +154,7 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
             s_node = getNodeFromMap(old);
             s_length = s_node->tokenSize;
             memcpy(s, s_node->token, s_length);
-            s[s_length++] = c[0];
+            s[s_length++] = *c;
         }
         else {
             s_node = getNodeFromMap(n);
@@ -171,18 +166,18 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
         }
         memcpy(&decodedData[decodedDataLength], s, s_length);
         decodedDataLength += s_length;
-        c[0] = s[0];
+        c = s;
         temp_node = getNodeFromMap(old);
         temp_length = temp_node->tokenSize;
         memcpy(temp, temp_node->token, temp_length);
-        temp[temp_length] = c[0];
+        temp[temp_length] = *c;
         unordered_map_push(temp, count, temp_length + 1);
-        memset(temp, 0, sizeof(temp));
         count++;
         old = n;
     }
     delete[] temp;
     delete[] s;
+    //delete c;
     disposeMap();
     return decodedDataLength;
 }
