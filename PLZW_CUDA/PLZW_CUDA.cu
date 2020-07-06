@@ -105,15 +105,15 @@ __device__ bool isCodeInMap(unsigned int code) {
 
 __device__ void loadCache(char* cache, unsigned int stripCacheLength, unsigned int cacheOffset, const char* globalItems, unsigned int globalItemsLength, unsigned int* nThreads, unsigned int thid) {
     unsigned int nitems = stripCacheLength * (cacheOffset + 1) <= globalItemsLength ? stripCacheLength : globalItemsLength - stripCacheLength * cacheOffset;
-    //printf("th=%d --- [%d]\n", thid, nitems);
+    printf("th=%d --- nitems=%d\n", thid, nitems);
     for (unsigned int i = 0; i < nitems; i++) {
         cache[stripCacheLength * thid + i] = globalItems[cacheOffset * *nThreads * stripCacheLength + *nThreads * i + thid];
-        //printf("th=%d --- cache[%d] = s1[%d]\n", thid, stripCacheLength * thid + i, cacheOffset * *nThreads * stripCacheLength + *nThreads * i + thid);
+        printf("th=%d --- cache[%d] = s1[%d]\n", thid, stripCacheLength * thid + i, cacheOffset * *nThreads * stripCacheLength + *nThreads * i + thid);
     }
     __syncthreads();
 }
 
-__device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode, unsigned int* nThreads, unsigned int thid, char* cache, unsigned int stripCacheLength)
+__device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode, unsigned int avgRng, unsigned int* nThreads, unsigned int thid, char* cache, unsigned int stripCacheLength)
 {
     char* ch;
     for (unsigned int i = 0; i < ALPHABET_LEN; i++) {
@@ -125,7 +125,7 @@ __device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* ob
 
     int out_index = 0, pLength;
     char *p = new char[MAX_TOKEN_SIZE], * pandc = new char[MAX_TOKEN_SIZE], *c = new char[1];
-    p[0] = s1[0];
+    p[0] = s1[thid];
     pLength = 1;
     unsigned int code = ALPHABET_LEN, cacheOffset = 0, cacheIndex;
     for (unsigned int i = 0; i < count; i++) {
@@ -135,8 +135,10 @@ __device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* ob
             cacheOffset++;
         }
         //printf("th=%d index=%d cacheIdx=%d cacheOffset=%d\n", thid, i, stripCacheLength * thid + cacheIndex, cacheOffset);
-        if (i != count - 1)
+        if (i != count - 1) {
             c[0] = cache[stripCacheLength * thid + cacheIndex + 1];
+            printf("accessing cache[%d] = %d\n", stripCacheLength * thid + cacheIndex + 1, cache[stripCacheLength * thid + cacheIndex + 1]);
+        }
         for (unsigned int str_i = 0; str_i < pLength; str_i++) pandc[str_i] = p[str_i];
         pandc[pLength] = c[0];
         if (isTokenInMap(pandc, pLength + 1)) {
@@ -227,21 +229,21 @@ __global__ void encoding(char *input, unsigned int *inputLength, unsigned int *e
     sharedItems_MAX /= *nThreads;
 
     unsigned int encodedLength, dataBuffLength, * encodedBuff,
-        avgRng = ceil((double)(*inputLength / *nThreads)), avgRngRest = *inputLength % *nThreads;
-    
+        avgRng = __double2uint_ru((double)(*inputLength) / (double)(*nThreads)), avgRngRest = *inputLength % *nThreads;
     dataBuffLength = avgRngRest == 0 || thid < avgRngRest ? avgRng : avgRng - 1;
 
-    unsigned int offset = 0,* encodedDataBuff = new unsigned int[dataBuffLength];
-    encodedBuffLengths[thid] = encoding_lzw(input, dataBuffLength, encodedDataBuff, nThreads, thid, cache, sharedItems_MAX);
+    unsigned int encOffset = 0,* encodedDataBuff = new unsigned int[dataBuffLength];
+
+    encodedBuffLengths[thid] = encoding_lzw(input, dataBuffLength, encodedDataBuff, avgRng, nThreads, thid, cache, sharedItems_MAX);
     __syncthreads();
 
     for (unsigned int i = 0; i < thid; i++) {
-        offset += encodedBuffLengths[i];
+        encOffset += encodedBuffLengths[i];
     }
     for (unsigned int i = 0; i < dataBuffLength; i++) {
-        encodedData[offset + i] = encodedDataBuff[i];
+        encodedData[encOffset + i] = encodedDataBuff[i];
+        printf("th%d i=%d  %d\n", thid, i, encodedDataBuff[i]);
     }
-
 }
 
 int main()
@@ -253,7 +255,7 @@ int main()
         cudaGetDeviceProperties(&prop, 0); // getting first device props
         sharedMem_MAX = prop.sharedMemPerBlock; // 49152 bytes per block for GTX 1070 (capability 6.1)
         nBlocks_MAX = prop.maxGridSize[0]; // 2147483647 blocks for GTX 1070 (capability 6.1)
-        warpSize = prop.warpSize;
+        warpSize = 3; //prop.warpSize;
     }
     else {
         cout << "No device detected" << endl;
@@ -319,8 +321,6 @@ int main()
 
     encodedData = (unsigned int*)realloc(encodedData, (encodedLength) * sizeof(unsigned int));
     char* decodedData = (char*)malloc(inputSize);
-
-    for (unsigned int i = 0; i < 30; i++) printf("%d ", encodedData[i]);
 
     decoding_begin = std::chrono::steady_clock::now();
     unsigned int decodedDataLength = 0; // decoding_lzw(encodedData, encodedLength, decodedData);
