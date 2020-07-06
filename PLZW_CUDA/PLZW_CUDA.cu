@@ -105,10 +105,10 @@ __device__ bool isCodeInMap(unsigned int code) {
 
 __device__ void loadCache(char* cache, unsigned int stripCacheLength, unsigned int cacheOffset, const char* globalItems, unsigned int globalItemsLength, unsigned int* nThreads, unsigned int thid) {
     unsigned int nitems = stripCacheLength * (cacheOffset + 1) <= globalItemsLength ? stripCacheLength : globalItemsLength - stripCacheLength * cacheOffset;
-    printf("th=%d --- nitems=%d\n", thid, nitems);
+    //printf("th=%d --- nitems=%d\n", thid, nitems);
     for (unsigned int i = 0; i < nitems; i++) {
         cache[stripCacheLength * thid + i] = globalItems[cacheOffset * *nThreads * stripCacheLength + *nThreads * i + thid];
-        printf("th=%d --- cache[%d] = s1[%d]\n", thid, stripCacheLength * thid + i, cacheOffset * *nThreads * stripCacheLength + *nThreads * i + thid);
+        //printf("th=%d --- cache[%d] = s1[%d]\n", thid, stripCacheLength * thid + i, cacheOffset * *nThreads * stripCacheLength + *nThreads * i + thid);
     }
     __syncthreads();
 }
@@ -125,19 +125,21 @@ __device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* ob
 
     int out_index = 0, pLength;
     char *p = new char[MAX_TOKEN_SIZE], * pandc = new char[MAX_TOKEN_SIZE], *c = new char[1];
-    p[0] = s1[thid];
+    loadCache(cache, stripCacheLength, 0, s1, count, nThreads, thid);
+    p[0] = cache[thid* stripCacheLength];
     pLength = 1;
-    unsigned int code = ALPHABET_LEN, cacheOffset = 0, cacheIndex;
+    unsigned int code = ALPHABET_LEN, cacheOffset = 1, cacheIndex, nextCacheIndex;
     for (unsigned int i = 0; i < count; i++) {
         cacheIndex = i % stripCacheLength;
-        if (cacheIndex == 0) {
+        nextCacheIndex = (i+1) % stripCacheLength;
+        if (cacheIndex == stripCacheLength - 1) {
             loadCache(cache, stripCacheLength, cacheOffset, s1, count, nThreads, thid);
             cacheOffset++;
         }
         //printf("th=%d index=%d cacheIdx=%d cacheOffset=%d\n", thid, i, stripCacheLength * thid + cacheIndex, cacheOffset);
         if (i != count - 1) {
-            c[0] = cache[stripCacheLength * thid + cacheIndex + 1];
-            printf("accessing cache[%d] = %d\n", stripCacheLength * thid + cacheIndex + 1, cache[stripCacheLength * thid + cacheIndex + 1]);
+            c[0] = cache[stripCacheLength * thid + nextCacheIndex];
+            //printf("th=%d i=%d accessing cache[%d] = %d\n", thid, i, stripCacheLength * thid + nextCacheIndex, cache[stripCacheLength * thid + nextCacheIndex]);
         }
         for (unsigned int str_i = 0; str_i < pLength; str_i++) pandc[str_i] = p[str_i];
         pandc[pLength] = c[0];
@@ -159,6 +161,7 @@ __device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* ob
         }
     }
     objectCode[out_index] = getCodeFromMap(p, pLength);
+
 
     delete[] p;
     delete[] pandc;
@@ -242,7 +245,7 @@ __global__ void encoding(char *input, unsigned int *inputLength, unsigned int *e
     }
     for (unsigned int i = 0; i < dataBuffLength; i++) {
         encodedData[encOffset + i] = encodedDataBuff[i];
-        printf("th%d i=%d  %d\n", thid, i, encodedDataBuff[i]);
+        //printf("th%d i=%d  %d\n", thid, i, encodedDataBuff[i]);
     }
 }
 
