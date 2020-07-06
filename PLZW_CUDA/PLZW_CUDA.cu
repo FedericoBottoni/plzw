@@ -264,7 +264,7 @@ __global__ void encoding(char *input, unsigned int *inputLength, unsigned int *e
     }
     for (unsigned int i = 0; i < encodedBuffLengths[thid]; i++) {
         encodedData[encOffset + i] = encodedDataBuff[i];
-        //printf("th%d i=%d  %d\n", thid, i, encodedDataBuff[i]);
+        printf("th%d i=%d  %d\n", thid, i, encodedDataBuff[i]);
     }
 
 }
@@ -290,7 +290,7 @@ __global__ void decoding(unsigned int* encodedData, unsigned int* encodedBuffLen
     __syncthreads();
 
     for (unsigned int i = 0; i < dataBuffLength; i++) {
-        decodedData[thid * i] = decodedDataBuff[i];
+        decodedData[*nThreads * i + thid] = decodedDataBuff[i];
         printf("th%d i=%d  %d\n", thid, i, decodedDataBuff[i]);
     }
 
@@ -392,6 +392,10 @@ int main()
 
     CUDA_WARN(cudaMemcpy(decodedData, dev_decodedData, inputSize, cudaMemcpyDeviceToHost));
     CUDA_WARN(cudaMemcpy(decodedBuffLengths, dev_decodedBuffLengths, nThreads * sizeof(unsigned int), cudaMemcpyDeviceToHost));
+
+    for (unsigned int i = 0; i < nThreads; i++) {
+        decodedDataLength += decodedBuffLengths[i];
+    }
 
     CUDA_WARN(cudaFree(dev_encodedData));
     CUDA_WARN(cudaFree(dev_encodedBuffLengths));
