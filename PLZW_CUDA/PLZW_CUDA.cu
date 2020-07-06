@@ -103,12 +103,22 @@ __device__ bool isCodeInMap(unsigned int code) {
     return token != NULL;
 }
 
-__device__ void loadCache(char* cache, unsigned int stripCacheLength, unsigned int cacheOffset, const char* globalItems, unsigned int globalItemsLength, unsigned int* nThreads, unsigned int thid) {
+__device__ void loadEncodingCache(char* cache, unsigned int stripCacheLength, unsigned int cacheOffset, const char* globalItems, unsigned int globalItemsLength, unsigned int* nThreads, unsigned int thid) {
     unsigned int nitems = stripCacheLength * (cacheOffset + 1) <= globalItemsLength ? stripCacheLength : globalItemsLength - stripCacheLength * cacheOffset;
     //printf("th=%d --- nitems=%d\n", thid, nitems);
     for (unsigned int i = 0; i < nitems; i++) {
         cache[stripCacheLength * thid + i] = globalItems[cacheOffset * *nThreads * stripCacheLength + *nThreads * i + thid];
         //printf("th=%d --- cache[%d] = s1[%d]\n", thid, stripCacheLength * thid + i, cacheOffset * *nThreads * stripCacheLength + *nThreads * i + thid);
+    }
+    __syncthreads();
+}
+
+__device__ void loadDecodingCache(unsigned int* cache, unsigned int stripCacheLength, unsigned int cacheOffset, unsigned int* globalItems, unsigned int globalItemsLength, unsigned int thid) {
+    unsigned int nitems = stripCacheLength * (cacheOffset + 1) <= globalItemsLength ? stripCacheLength : globalItemsLength - stripCacheLength * cacheOffset;
+    //printf("th=%d --- nitems=%d\n", thid, nitems);
+    for (unsigned int i = 0; i < nitems; i++) {
+        cache[stripCacheLength * thid + i] = globalItems[cacheOffset * stripCacheLength + i ];
+        //printf("th=%d --- cache[%d] = s1[%d]\n", thid, stripCacheLength * thid + i, cacheOffset * stripCacheLength + i);
     }
     __syncthreads();
 }
@@ -125,7 +135,7 @@ __device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* ob
 
     int out_index = 0, pLength;
     char *p = new char[MAX_TOKEN_SIZE], * pandc = new char[MAX_TOKEN_SIZE], *c = new char[1];
-    loadCache(cache, stripCacheLength, 0, s1, count, nThreads, thid);
+    loadEncodingCache(cache, stripCacheLength, 0, s1, count, nThreads, thid);
     p[0] = cache[thid* stripCacheLength];
     pLength = 1;
     unsigned int code = ALPHABET_LEN, cacheOffset = 1, cacheIndex, nextCacheIndex;
@@ -133,7 +143,7 @@ __device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* ob
         cacheIndex = i % stripCacheLength;
         nextCacheIndex = (i+1) % stripCacheLength;
         if (cacheIndex == stripCacheLength - 1) {
-            loadCache(cache, stripCacheLength, cacheOffset, s1, count, nThreads, thid);
+            loadEncodingCache(cache, stripCacheLength, cacheOffset, s1, count, nThreads, thid);
             cacheOffset++;
         }
         //printf("th=%d index=%d cacheIdx=%d cacheOffset=%d\n", thid, i, stripCacheLength * thid + cacheIndex, cacheOffset);
@@ -169,8 +179,7 @@ __device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* ob
     
     return out_index;
 }
-
-__device__ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
+__device__ unsigned int decoding_lzw(unsigned int* op, char* decodedData, unsigned int* encodedBuffLengths, unsigned int* nThreads, unsigned int thid, unsigned int* cache, unsigned int stripCacheLength)
 {
     char* ch;
     for (unsigned int i = 0; i < ALPHABET_LEN; i++) {
@@ -180,7 +189,10 @@ __device__ unsigned int decoding_lzw(unsigned int* op, int op_length, char* deco
     }
     delete[] ch;
 
-    unsigned int old = op[0], decodedDataLength, n;
+    unsigned int old, decodedDataLength, n, cacheIndex, nextCacheIndex, cacheOffset;
+    loadDecodingCache(cache, stripCacheLength, 0, op, encodedBuffLengths[thid], thid);
+    old = cache[stripCacheLength * thid];
+    cacheOffset = 1;
     unordered_map_node* temp_node, * s_node = getNodeFromMap(old);
     int temp_length, s_length = s_node->tokenSize;
     char* s = new char[MAX_TOKEN_SIZE], *temp = new char[MAX_TOKEN_SIZE];
@@ -190,8 +202,15 @@ __device__ unsigned int decoding_lzw(unsigned int* op, int op_length, char* deco
     memcpy(decodedData, s, s_length);
     decodedDataLength = 1;
     int count = ALPHABET_LEN;
-    for (int i = 0; i < op_length - 1; i++) {
-        n = op[i + 1];
+    for (int i = 0; i < encodedBuffLengths[thid] - 1; i++) {
+        cacheIndex = i % stripCacheLength;
+        nextCacheIndex = (i + 1) % stripCacheLength;
+        if (cacheIndex == stripCacheLength - 1) {
+            loadDecodingCache(cache, stripCacheLength, cacheOffset, op, encodedBuffLengths[thid], thid);
+            cacheOffset++;
+        }
+        n = cache[stripCacheLength * thid + nextCacheIndex];
+        //printf("th=%d i=%d accessing cache[%d] = %d\n", thid, i, stripCacheLength * thid + nextCacheIndex, cache[stripCacheLength * thid + nextCacheIndex]);
         if (!isTokenInMap(s, s_length)) {
             s_node = getNodeFromMap(old);
             s_length = s_node->tokenSize;
@@ -220,15 +239,15 @@ __device__ unsigned int decoding_lzw(unsigned int* op, int op_length, char* deco
     }
     delete[] temp;
     delete[] s;
-    disposeMap();
+    //disposeMap();
     return decodedDataLength;
 }
 
-__global__ void encoding(char *input, unsigned int *inputLength, unsigned int *encodedData, unsigned int* encodedBuffLengths, unsigned int* nThreads, unsigned int* sharedMem_MAX) {
+__global__ void encoding(char *input, unsigned int *inputLength, unsigned int *encodedData, unsigned int* encodedBuffLengths, unsigned int* nThreads) {
     unsigned int sharedItems_MAX, thid = threadIdx.x + blockIdx.x * blockDim.x;
     sharedItems_MAX = SHAREDMEM_MAX; //*sharedMem_MAX / (sizeof(char));
 
-    extern __shared__ char cache[SHAREDMEM_MAX];
+    extern __shared__ char enc_cache[SHAREDMEM_MAX];
     sharedItems_MAX /= *nThreads;
 
     unsigned int encodedLength, dataBuffLength, * encodedBuff,
@@ -237,16 +256,45 @@ __global__ void encoding(char *input, unsigned int *inputLength, unsigned int *e
 
     unsigned int encOffset = 0,* encodedDataBuff = new unsigned int[dataBuffLength];
 
-    encodedBuffLengths[thid] = encoding_lzw(input, dataBuffLength, encodedDataBuff, avgRng, nThreads, thid, cache, sharedItems_MAX);
+    encodedBuffLengths[thid] = encoding_lzw(input, dataBuffLength, encodedDataBuff, avgRng, nThreads, thid, enc_cache, sharedItems_MAX);
     __syncthreads();
 
     for (unsigned int i = 0; i < thid; i++) {
         encOffset += encodedBuffLengths[i];
     }
-    for (unsigned int i = 0; i < dataBuffLength; i++) {
+    for (unsigned int i = 0; i < encodedBuffLengths[thid]; i++) {
         encodedData[encOffset + i] = encodedDataBuff[i];
         //printf("th%d i=%d  %d\n", thid, i, encodedDataBuff[i]);
     }
+
+}
+
+__global__ void decoding(unsigned int* encodedData, unsigned int* encodedBuffLengths, unsigned int* inputLength, char* decodedData, unsigned int* decodedBuffLengths, unsigned int* nThreads) {
+    unsigned int sharedItems_MAX, thid = threadIdx.x + blockIdx.x * blockDim.x;
+    sharedItems_MAX = SHAREDMEM_MAX; //*sharedMem_MAX / (sizeof(char));
+
+    extern __shared__ unsigned int dec_cache[SHAREDMEM_MAX];
+    sharedItems_MAX /= *nThreads;
+
+    unsigned int encodedLength = 0, dataBuffLength, *encodedBuff, encodedOffset = 0,
+        avgRng = __double2uint_ru((double)(*inputLength) / (double)(*nThreads)), avgRngRest = *inputLength % *nThreads;
+    dataBuffLength = avgRngRest == 0 || thid < avgRngRest ? avgRng : avgRng - 1;
+
+    char* decodedDataBuff = new char[dataBuffLength];
+
+    for (unsigned int i = 0; i < thid; i++) {
+        encodedOffset += encodedBuffLengths[i];
+    }
+
+    decodedBuffLengths[thid] = decoding_lzw(&encodedData[encodedOffset], decodedDataBuff, encodedBuffLengths, nThreads, thid, dec_cache, sharedItems_MAX);
+    __syncthreads();
+
+    for (unsigned int i = 0; i < dataBuffLength; i++) {
+        decodedData[thid * i] = decodedDataBuff[i];
+        printf("th%d i=%d  %d\n", thid, i, decodedDataBuff[i]);
+    }
+
+    //delete[] decodedDataBuff;
 }
 
 int main()
@@ -295,16 +343,14 @@ int main()
     CUDA_WARN(cudaMalloc((void**)&dev_input, inputLength * sizeof(char)));
     CUDA_WARN(cudaMalloc((void**)&dev_inputLength, sizeof(unsigned int)));
     CUDA_WARN(cudaMalloc((void**)&dev_nThreads, sizeof(unsigned int)));
-    CUDA_WARN(cudaMalloc((void**)&dev_sharedMem_MAX, sizeof(unsigned int)));
     CUDA_WARN(cudaMalloc((void**)&dev_encodedData, inputLength * sizeof(unsigned int)));
     CUDA_WARN(cudaMalloc((void**)&dev_encodedBuffLengths, nThreads * sizeof(unsigned int)));
 
     CUDA_WARN(cudaMemcpy(dev_input, input_point, inputLength * sizeof(char), cudaMemcpyHostToDevice));
     CUDA_WARN(cudaMemcpy(dev_inputLength, &inputLength, sizeof(unsigned int), cudaMemcpyHostToDevice));
     CUDA_WARN(cudaMemcpy(dev_nThreads, &nThreads, sizeof(unsigned int), cudaMemcpyHostToDevice));
-    CUDA_WARN(cudaMemcpy(dev_sharedMem_MAX, &sharedMem_MAX, sizeof(unsigned int), cudaMemcpyHostToDevice));
 
-    encoding<<< nBlocks, warpSize >>>(dev_input, dev_inputLength, dev_encodedData, dev_encodedBuffLengths, dev_nThreads, dev_sharedMem_MAX);
+    encoding<<< nBlocks, warpSize >>>(dev_input, dev_inputLength, dev_encodedData, dev_encodedBuffLengths, dev_nThreads);
 
     CUDA_WARN(cudaMemcpy(encodedData, dev_encodedData, inputLength * sizeof(unsigned int), cudaMemcpyDeviceToHost));
     CUDA_WARN(cudaMemcpy(encodedBuffLengths, dev_encodedBuffLengths, nThreads * sizeof(unsigned int), cudaMemcpyDeviceToHost));
@@ -313,20 +359,47 @@ int main()
         encodedLength += encodedBuffLengths[i];
     }
 
-    cudaFree(dev_input);
-    cudaFree(dev_inputLength);
-    cudaFree(dev_encodedData);
-    cudaFree(dev_encodedBuffLengths);
-    cudaFree(dev_nThreads);
-    cudaFree(dev_sharedMem_MAX);
+    CUDA_WARN(cudaFree(dev_input));
+    CUDA_WARN(cudaFree(dev_inputLength));
+    CUDA_WARN(cudaFree(dev_encodedData));
+    CUDA_WARN(cudaFree(dev_encodedBuffLengths));
+    CUDA_WARN(cudaFree(dev_nThreads));
     
     encoding_end = std::chrono::steady_clock::now();
 
+    //for (unsigned int i = 0; i < encodedLength; i++) printf("%d ", encodedData[i]);
+    printf("\n\n");
     encodedData = (unsigned int*)realloc(encodedData, (encodedLength) * sizeof(unsigned int));
     char* decodedData = (char*)malloc(inputSize);
-
+    unsigned int* decodedBuffLengths = (unsigned int*)malloc(nThreads * sizeof(unsigned int));
     decoding_begin = std::chrono::steady_clock::now();
-    unsigned int decodedDataLength = 0; // decoding_lzw(encodedData, encodedLength, decodedData);
+    char* dev_decodedData;
+    unsigned int *dev_decodedBuffLengths, decodedDataLength = 0;
+
+    CUDA_WARN(cudaMalloc((void**)&dev_encodedData, encodedLength * sizeof(unsigned int)));
+    CUDA_WARN(cudaMalloc((void**)&dev_encodedBuffLengths, nThreads * sizeof(unsigned int)));
+    CUDA_WARN(cudaMalloc((void**)&dev_inputLength, sizeof(unsigned int)));
+    CUDA_WARN(cudaMalloc((void**)&dev_nThreads, sizeof(unsigned int)));
+    CUDA_WARN(cudaMalloc((void**)&dev_decodedData, inputSize));
+    CUDA_WARN(cudaMalloc((void**)&dev_decodedBuffLengths, nThreads * sizeof(unsigned int)));
+
+    CUDA_WARN(cudaMemcpy(dev_encodedData, encodedData, encodedLength * sizeof(unsigned int), cudaMemcpyHostToDevice));
+    CUDA_WARN(cudaMemcpy(dev_encodedBuffLengths, encodedBuffLengths, nThreads * sizeof(unsigned int), cudaMemcpyHostToDevice));
+    CUDA_WARN(cudaMemcpy(dev_inputLength, &inputLength, sizeof(unsigned int), cudaMemcpyHostToDevice));
+    CUDA_WARN(cudaMemcpy(dev_nThreads, &nThreads, sizeof(unsigned int), cudaMemcpyHostToDevice));
+
+    decoding<<< nBlocks, warpSize >>>(dev_encodedData, dev_encodedBuffLengths, dev_inputLength, dev_decodedData, dev_decodedBuffLengths, dev_nThreads);
+
+    CUDA_WARN(cudaMemcpy(decodedData, dev_decodedData, inputSize, cudaMemcpyDeviceToHost));
+    CUDA_WARN(cudaMemcpy(decodedBuffLengths, dev_decodedBuffLengths, nThreads * sizeof(unsigned int), cudaMemcpyDeviceToHost));
+
+    CUDA_WARN(cudaFree(dev_encodedData));
+    CUDA_WARN(cudaFree(dev_encodedBuffLengths));
+    CUDA_WARN(cudaFree(dev_inputLength));
+    CUDA_WARN(cudaFree(dev_nThreads));
+    CUDA_WARN(cudaFree(dev_decodedData));
+    CUDA_WARN(cudaFree(dev_decodedBuffLengths));
+
     decoding_end = std::chrono::steady_clock::now();
 
     if (inputLength == decodedDataLength) {
@@ -351,7 +424,7 @@ int main()
     cout << "Encoding time: " << std::chrono::duration_cast<std::chrono::milliseconds> (encoding_end - encoding_begin).count() << "[ms]" << std::endl;
     cout << "Decoding time: " << std::chrono::duration_cast<std::chrono::milliseconds> (decoding_end - decoding_begin).count() << "[ms]" << std::endl;
 
-    delete[] encodedData;
-    delete[] decodedData;
+    free(encodedData);
+    free(decodedData);
     return 0;
 }
