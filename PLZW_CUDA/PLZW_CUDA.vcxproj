@@ -155,6 +155,9 @@
       <FileType>CppCode</FileType>
     </CudaCompile>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\dependencies\uthash.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 11.0.targets" />

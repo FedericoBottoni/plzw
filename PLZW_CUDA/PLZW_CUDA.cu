@@ -4,98 +4,71 @@
 #include <fstream>
 #include <chrono>
 #include <limits.h>
-#include <unordered_map>
 #include <string>
 #include <cuda_runtime.h>
+#include "../dependencies/uthash.h"
 #define IN_PATH "F:\\Dev\\PLZW\\in.txt"
 #define ALPHABET_LEN 256
 #define DEFAULT_NBLOCKS 4
 #define MAX_TOKEN_SIZE 1000
 
-struct unordered_map_node
-{
-    char* token;
-    short tokenSize;
+using namespace std;
+
+struct unsorted_node_map {
+    char *id; // key
     unsigned int code;
-    struct unordered_map_node* next;
+    short tokenSize;
+    UT_hash_handle hh; /* makes this structure hashable */
 };
 
-struct unordered_map_node* unordered_map_head = NULL;
+struct unsorted_node_map* table = NULL;
 
-void disposeMap() {
-    unordered_map_node* current = unordered_map_head;
-    struct unordered_map_node* next;
-    while (current != NULL)
-    {
-        next = current->next;
-        free(current->token);
-        free(current);
-        current = next;
+void push_into_table(char* id, short tokenSize, unsigned int code) {
+    struct unsorted_node_map* s = (struct unsorted_node_map*)malloc(sizeof * s);
+    char* curr_token = (char*)malloc(tokenSize * sizeof(char));
+    memcpy(curr_token, id, tokenSize);
+    s->id = curr_token;
+    s->tokenSize = tokenSize;
+    s->code = code;
+    HASH_ADD_KEYPTR(hh, table, s->id, tokenSize, s);
+}
+
+struct unsorted_node_map* find_by_token(char* id, short length) {
+    struct unsorted_node_map* s = (struct unsorted_node_map*)malloc(sizeof * s);
+    HASH_FIND_STR(table, id, s);
+    return s;
+}
+
+struct unsorted_node_map* find_by_code(unsigned int code) {
+    struct unsorted_node_map* s = (struct unsorted_node_map*)malloc(sizeof * s);
+    HASH_FIND_INT(table, &code, s);
+    return s;
+}
+
+void dispose_table() {
+    struct unsorted_node_map* node = (struct unsorted_node_map*)malloc(sizeof * node),
+        *tmp = (struct unsorted_node_map*)malloc(sizeof * tmp);
+
+    HASH_ITER(hh, table, node, tmp) {
+        free(node->id);
+        HASH_DEL(table, node);
+        free(node);
     }
-    unordered_map_head = NULL;
 }
 
-void unordered_map_push(char* token, int code, short tokenLength) {
-    struct unordered_map_node* link = (struct unordered_map_node*)malloc(sizeof(struct unordered_map_node));
-    char* token_pointer = (char*)malloc(tokenLength * sizeof(char));
-    memcpy(token_pointer, token, tokenLength);
-    link->token = token_pointer;
-    link->tokenSize = tokenLength;
-    link->code = code;
-    link->next = unordered_map_head;
-    unordered_map_head = link;
-}
-
-unsigned int getCodeFromMap(char* token, int tokenLength) {
-    struct unordered_map_node* ptr = unordered_map_head;
-    while (ptr != NULL) {
-        bool equals = true;
-        equals = tokenLength == ptr->tokenSize && strncmp(ptr->token, token, tokenLength) == 0;
-        if (equals) {
-            return ptr->code;
-        }
-        else {
-            ptr = ptr->next;
-        }
-    }
-    return UINT_MAX;
-}
-
-unordered_map_node* getNodeFromMap(unsigned int code) {
-    struct unordered_map_node* ptr = unordered_map_head;
-
-    while (ptr != NULL) {
-        bool equals = true;
-        if (ptr->code == code) {
-            return ptr;
-        }
-        else {
-            ptr = ptr->next;
-        }
-    }
-    return NULL;
-}
-
-bool isTokenInMap(char* token, int tokenLength) {
-    unsigned int code = getCodeFromMap(token, tokenLength);
-    return code != UINT_MAX;
-}
-
-bool isCodeInMap(unsigned int code) {
-    unordered_map_node* token = getNodeFromMap(code);
-    return token != NULL;
-}
 
 int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
 {
-    char ch;
-    for (unsigned int i = 0; i < ALPHABET_LEN; i++) {
-        ch = char(i);
-        unordered_map_push(&ch, i, 1);
+    char* ch = (char*)malloc(sizeof(char));
+    for (unsigned int i = 1; i < ALPHABET_LEN; i++) {
+        ch[0] = char(i);
+        push_into_table(ch, 1, i);
     }
 
     int out_index = 0, pLength;
-    char *p = new char[MAX_TOKEN_SIZE], * pandc = new char[MAX_TOKEN_SIZE], *c = new char[1];
+    char* p = (char*)malloc(sizeof(char)), * pandc = (char*)malloc(2*sizeof(char)), *c = new char[1];
+    memset(p, 0, sizeof(p));
+    memset(pandc, 0, sizeof(p));
     p[0] = s1[0];
     pLength = 1;
     unsigned int code = ALPHABET_LEN;
@@ -103,31 +76,33 @@ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
     for (i = 0; i < count; i++) {
         if (i != count - 1)
             c[0] = s1[i + 1];
-        pandc = strncpy(pandc, p, pLength);
+        for (unsigned short str_i = 0; str_i < pLength; str_i++) pandc[str_i] = p[str_i];
         pandc[pLength] = c[0];
-        if (isTokenInMap(pandc, pLength + 1)) {
-            strcpy(p, pandc);
-            pLength++;
+        if (find_by_token(pandc, pLength + 1) != NULL) {
+            p = (char*)realloc(p, ++pLength * sizeof(char));
+            pandc = (char*)realloc(pandc, (pLength+1) * sizeof(char));
+            for (unsigned short str_i = 0; str_i < pLength; str_i++) p[str_i] = pandc[str_i];
         }
         else {
-            objectCode[out_index++] = getCodeFromMap(p, pLength);
-            unordered_map_push(pandc, code, pLength + 1);
+            unsorted_node_map *node = find_by_token(p, pLength);
+            objectCode[out_index++] = node->code;
+            push_into_table(pandc, pLength + 1, code);
             code++;
-            memset(p, 0, sizeof(p));
             p[0] = c[0];
+            if (pLength > 1) {
+                p = (char*)realloc(p, sizeof(char));
+                pandc = (char*)realloc(pandc, 2*sizeof(char));
+            }
             pLength = 1;
         }
         c[0] = NULL;
         //memset(pandc, 0, sizeof(pandc));
-        if (pLength > MAX_TOKEN_SIZE - 1) {
-            printf("Token-size is not enough big\n");
-        }
     }
-    objectCode[out_index] = getCodeFromMap(p, pLength);
+    objectCode[out_index] = find_by_token(p, pLength)->code;
 
-    delete[] p;
-    delete[] pandc;
-    disposeMap();
+    free(p);
+    free(pandc);
+    dispose_table();
     return out_index;
 }
 
@@ -136,51 +111,53 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
     char ch;
     for (unsigned int i = 0; i < ALPHABET_LEN; i++) {
         ch = char(i);
-        unordered_map_push(&ch, i, 1);
+        push_into_table(&ch, 1, i);
     }
 
     unsigned int old = op[0], decodedDataLength, n;
-    unordered_map_node* temp_node, * s_node = getNodeFromMap(old);
+    struct unsorted_node_map* temp_node, * s_node = find_by_code(old);
     int temp_length, s_length = s_node->tokenSize;
-    char* s = new char[MAX_TOKEN_SIZE], *temp = new char[MAX_TOKEN_SIZE];
-    memcpy(s, s_node->token, s_length);
+    char* s = new char[MAX_TOKEN_SIZE], * temp = new char[MAX_TOKEN_SIZE];
+    memcpy(s, s_node->id, s_length);
     char* c = s;
     memcpy(decodedData, s, s_length);
     decodedDataLength = 1;
     int count = ALPHABET_LEN;
     for (int i = 0; i < op_length - 1; i++) {
         n = op[i + 1];
-        if (!isTokenInMap(s, s_length)) {
-            s_node = getNodeFromMap(old);
+        if (find_by_token(s, s_length) == NULL) {
+            s_node = find_by_code(old);
             s_length = s_node->tokenSize;
-            memcpy(s, s_node->token, s_length);
+            memcpy(s, s_node->id, s_length);
             s[s_length++] = *c;
         }
         else {
-            s_node = getNodeFromMap(n);
+            s_node = find_by_code(n);
             s_length = s_node->tokenSize;
-            memcpy(s, s_node->token, s_length);
+            memcpy(s, s_node->id, s_length);
         }
         if (s_length > MAX_TOKEN_SIZE - 1) {
             printf("Token-size is not enough big");
+            exit(-1);
         }
         memcpy(&decodedData[decodedDataLength], s, s_length);
         decodedDataLength += s_length;
         c = s;
-        temp_node = getNodeFromMap(old);
+        temp_node = find_by_code(old);
         temp_length = temp_node->tokenSize;
-        memcpy(temp, temp_node->token, temp_length);
+        memcpy(temp, temp_node->id, temp_length);
         temp[temp_length] = *c;
-        unordered_map_push(temp, count, temp_length + 1);
+        push_into_table(temp, temp_length + 1, count);
         count++;
         old = n;
     }
     delete[] temp;
     delete[] s;
-    //delete c;
-    disposeMap();
+    dispose_table();
     return decodedDataLength;
 }
+
+
 
 __global__ void encoding(char *input, unsigned int *inputLength, unsigned int *encodedData, unsigned int* nBlocks) {
     unsigned int block = blockIdx.x;
@@ -192,7 +169,7 @@ __global__ void encoding(char *input, unsigned int *inputLength, unsigned int *e
     //printf("tid = %d\n", thid);
 }
 
-using namespace std;
+
 int main()
 {
     cudaDeviceProp prop;

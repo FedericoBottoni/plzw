@@ -1,4 +1,7 @@
+#ifndef STD_LIBS
+#define STD_LIBS
 #include <stdio.h>
+#endif // STD_LIBS
 #include <stdlib.h>
 #include <iostream>
 #include <fstream>
@@ -33,17 +36,18 @@ int main()
     std::chrono::steady_clock::time_point encoding_end = std::chrono::steady_clock::now();
 
     encodedData = (unsigned int*)realloc(encodedData, (encodedLength) * sizeof(unsigned int));
+    char* decodedData = (char*)malloc(inputLength * sizeof(char));
     //for (unsigned int j = 0; j < encodedLength; j++) {
     //    cout << encodedData[j] << " ";
     //}
 
     std::chrono::steady_clock::time_point decoding_begin = std::chrono::steady_clock::now();
-    string decodedData = decoding_lzw(encodedData, encodedLength);
+    unsigned int decodedDataLength = decoding_lzw(encodedData, encodedLength, decodedData);
     std::chrono::steady_clock::time_point decoding_end = std::chrono::steady_clock::now();
 
     // cout << decodedData << "\n\n";
     
-    if (inputLength == decodedData.length()) {
+    if (inputLength == decodedDataLength) {
         for (unsigned int j = 0; j < inputLength; j++) {
             correctness = input[j] == decodedData[j];
             if (correctness == 0) {

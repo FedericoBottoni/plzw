@@ -17,4 +17,9 @@
   <ItemGroup>
     <CudaCompile Include="PLZW_CUDA.cu" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\dependencies\uthash.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
 </Project>
