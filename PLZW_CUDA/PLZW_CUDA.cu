@@ -42,7 +42,7 @@ void push_into_table(char* id, short tokenSize, unsigned int code) {
 }
 
 struct unsorted_node_map* find_by_token(char* id, short length) {
-    struct unsorted_node_map* s = (struct unsorted_node_map*)malloc(sizeof * s);
+    struct unsorted_node_map* s;
     id[length] = '\0';
     HASH_FIND_STR(table, id, s);
     return s;
@@ -80,7 +80,7 @@ void push_into_table_dec(unsigned int id, char* token, short tokenSize) {
 }
 
 struct unsorted_node_map_dec* find_by_code_dec(unsigned int id) {
-    struct unsorted_node_map_dec* s = (struct unsorted_node_map_dec*)malloc(sizeof * s);
+    struct unsorted_node_map_dec* s;
     HASH_FIND_INT(table_dec, &id, s);
     return s;
 }
@@ -108,7 +108,7 @@ struct unsorted_node_map_dec* find_by_token_dec(char* token, short tokenSize) {
     return NULL;
 }
 
-void dispose_table_desc() {
+void dispose_table_dec() {
     struct unsorted_node_map_dec* node, * tmp;
 
     HASH_ITER(hh, table_dec, node, tmp) {
@@ -169,7 +169,7 @@ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
 
     free(p);
     free(pandc);
-    //dispose_table();
+    dispose_table();
     return out_index;
 }
 
@@ -185,10 +185,10 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
     unsigned int old = op[0], decodedDataLength, n;
     struct unsorted_node_map_dec* temp_node, * s_node = find_by_code_dec(old);
     int temp_length, s_length = s_node->tokenSize;
-    char* s = (char*)malloc(2*sizeof(char)), * temp = (char*)malloc(2*sizeof(char));
+    char* s = (char*)malloc((s_length +1)*sizeof(char)), * temp = (char*)malloc(sizeof(char));
     memcpy(s, s_node->token, s_length);
     s[s_length] = '\0';
-    temp[1] = '\0';
+    temp[0] = '\0';
     char c = s[0];
 
     memcpy(decodedData, s, s_length);
@@ -199,8 +199,10 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
         if (find_by_token_dec(s, s_length) == NULL) {
             s_node = find_by_code_dec(old);
             s_length = s_node->tokenSize;
-            memcpy(s, s_node->token, s_length);
-            s[s_length++] = c;
+            s = (char*)realloc(s, (++s_length + 1) * sizeof(char));
+            memcpy(s, s_node->token, s_length - 1);
+            s[s_length-1] = c;
+            s[s_length] = '\0';
         }
         else {
             s_node = find_by_code_dec(n);
@@ -222,13 +224,13 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
         }
         memcpy(temp, temp_node->token, temp_length - 1);
         temp[temp_length - 1] = c;
-        push_into_table_dec(count, temp, temp_length + 1);
+        push_into_table_dec(count, temp, temp_length);
         count++;
         old = n;
     }
     free(temp);
     free(s);
-    //dispose_table_dec();
+    dispose_table_dec();
     return decodedDataLength;
 }
 
@@ -314,7 +316,7 @@ int main()
     unsigned int decodedDataLength = decoding_lzw(encodedData, encodedLength, decodedData);
     decoding_end = std::chrono::steady_clock::now();
 
-    // cout << decodedData << "\n\n";
+    //cout << decodedData << "\n\n";
 
     if (inputLength == decodedDataLength) {
         for (unsigned int j = 0; j < inputLength; j++) {
