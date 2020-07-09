@@ -152,6 +152,9 @@
       <Project>{77992639-8a5d-451c-b8a8-0d3a0b449e54}</Project>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\dependencies\uthash.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
