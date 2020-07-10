@@ -34,10 +34,7 @@ struct unsorted_node_map_dec {
     UT_hash_handle hh; /* makes this structure hashable */
 };
 
-__device__ struct unsorted_node_map* table;
-__device__ struct unsorted_node_map_dec* table_dec;
-
-__device__ void push_into_table(char* id, short tokenSize, unsigned int code) {
+__device__ unsorted_node_map* push_into_table(unsorted_node_map* table, char* id, short tokenSize, unsigned int code) {
     struct unsorted_node_map* s = (struct unsorted_node_map*)malloc(sizeof * s);
     char* curr_token = (char*)malloc((tokenSize + 1) * sizeof(char));
     memcpy(curr_token, id, tokenSize);
@@ -46,16 +43,17 @@ __device__ void push_into_table(char* id, short tokenSize, unsigned int code) {
     s->tokenSize = tokenSize;
     s->code = code;
     HASH_ADD_KEYPTR(hh, table, s->id, tokenSize, s);
+    return table;
 }
 
-__device__ struct unsorted_node_map* find_by_token(char* id, short length) {
+__device__ struct unsorted_node_map* find_by_token(unsorted_node_map* table, char* id, short length) {
     struct unsorted_node_map* s;
     id[length] = '\0';
     HASH_FIND_STR(table, id, s);
     return s;
 }
 
-__device__ struct unsorted_node_map* find_by_code(unsigned int code) {
+__device__ struct unsorted_node_map* find_by_code(unsorted_node_map* table, unsigned int code) {
     struct unsorted_node_map* node, * tmp;
     HASH_ITER(hh, table, node, tmp) {
         if (node->code == code) {
@@ -65,7 +63,7 @@ __device__ struct unsorted_node_map* find_by_code(unsigned int code) {
     return NULL;
 }
 
-__device__ void dispose_table() {
+__device__ void dispose_table(unsorted_node_map* table) {
     struct unsorted_node_map* node, * tmp;
 
     HASH_ITER(hh, table, node, tmp) {
@@ -75,7 +73,7 @@ __device__ void dispose_table() {
     }
 }
 
-__device__ void push_into_table_dec(unsigned int id, char* token, short tokenSize) {
+__device__ struct unsorted_node_map_dec* push_into_table_dec(unsorted_node_map_dec* table, unsigned int id, char* token, short tokenSize) {
     struct unsorted_node_map_dec* s = (struct unsorted_node_map_dec*)malloc(sizeof * s);
     char* curr_token = (char*)malloc((tokenSize + 1) * sizeof(char));
     memcpy(curr_token, token, tokenSize);
@@ -83,44 +81,22 @@ __device__ void push_into_table_dec(unsigned int id, char* token, short tokenSiz
     s->token = curr_token;
     s->tokenSize = tokenSize;
     s->id = id;
-    HASH_ADD_INT(table_dec, id, s);
+    HASH_ADD_INT(table, id, s);
+    return table;
 }
 
-__device__ struct unsorted_node_map_dec* find_by_code_dec(unsigned int id) {
+__device__ struct unsorted_node_map_dec* find_by_code_dec(unsorted_node_map_dec* table, unsigned int id) {
     struct unsorted_node_map_dec* s;
-    HASH_FIND_INT(table_dec, &id, s);
+    HASH_FIND_INT(table, &id, s);
     return s;
 }
 
-__device__ struct unsorted_node_map_dec* find_by_token_dec(char* token, short tokenSize) {
-    struct unsorted_node_map_dec* node, * tmp;
-    bool equals;
-    HASH_ITER(hh, table_dec, node, tmp) {
-        equals = true;
-        if (tokenSize != node->tokenSize) {
-            equals = false;
-        }
-        else {
-            for (short i = 0; i < tokenSize; i++) {
-                if (token[i] != node->token[i]) {
-                    equals = false;
-                    break;
-                }
-            }
-        }
-        if (equals) {
-            return node;
-        }
-    }
-    return NULL;
-}
-
-__device__ void dispose_table_dec() {
+__device__ void dispose_table_dec(unsorted_node_map_dec* table) {
     struct unsorted_node_map_dec* node, * tmp;
 
-    HASH_ITER(hh, table_dec, node, tmp) {
+    HASH_ITER(hh, table, node, tmp) {
         free(node->token);
-        HASH_DEL(table_dec, node);
+        HASH_DEL(table, node);
         free(node);
     }
 }
@@ -147,16 +123,19 @@ __device__ void loadDecodingCache(unsigned int* cache, unsigned int stripCacheLe
 
 __device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode, unsigned int avgRng, unsigned int* nThreads, unsigned int thid, char* cache, unsigned int stripCacheLength)
 {
-    printf("aaaa\n");
+    struct unsorted_node_map* table;
     char* ch = (char*)malloc(sizeof(char));
     for (unsigned int i = 1; i < ALPHABET_LEN; i++) {
         ch[0] = char(i);
-        printf("%d",i);
-        push_into_table(ch, 1, i);
+        // printf("tbl: %s %d\n", ch, i);
+        table = push_into_table(table, ch, 1, i);
     }
-    printf("aaaaaaaaaaaaa\n");
+    /*
+    struct unsorted_node_map* noden1, * tmp1;
+    HASH_ITER(hh, table, noden1, tmp1) {
+        printf("tbl: %s %d\n", noden1->id, noden1->code);
+    }*/
     free(ch);
-    
     unsorted_node_map* node;
     int out_index = 0, pLength;
     char* p = (char*)malloc(MAX_TOKEN_SIZE * sizeof(char)), * pandc = (char*)malloc((MAX_TOKEN_SIZE + 1) * sizeof(char)), * c = new char[1];
@@ -180,16 +159,17 @@ __device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* ob
         }
         for (unsigned short str_i = 0; str_i < pLength; str_i++) pandc[str_i] = p[str_i];
         pandc[pLength] = c[0];
-        unsorted_node_map* node = find_by_token(pandc, pLength + 1);
+        unsorted_node_map* node = find_by_token(table, pandc, pLength + 1);
+        //printf("%d %d, FINO QUI\n", thid, i);
         if (node != NULL) {
             p[++pLength] = '\0';
             pandc[pLength + 1] = '\0';
             for (unsigned short str_i = 0; str_i < pLength; str_i++) p[str_i] = pandc[str_i];
         }
         else {
-            node = find_by_token(p, pLength);
+            node = find_by_token(table, p, pLength);
             objectCode[out_index++] = node->code;
-            push_into_table(pandc, pLength + 1, code);
+            table = push_into_table(table, pandc, pLength + 1, code);
             code++;
             p[0] = c[0];
             if (pLength > 1) {
@@ -200,24 +180,26 @@ __device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* ob
         }
         c[0] = NULL;
     }
-    objectCode[out_index++] = find_by_token(p, pLength)->code;
+    objectCode[out_index++] = find_by_token(table, p, pLength)->code;
+    /*
     struct unsorted_node_map* noden, * tmp;
 
     HASH_ITER(hh, table, noden, tmp) {
         if(noden->code > 255)
             printf("tbl: %s %d\n", noden->id, noden->code);
-    }
+    }*/
     free(p);
     free(pandc);
-    dispose_table();
+    dispose_table(table);
     return out_index;
 }
 __device__ unsigned int decoding_lzw(unsigned int* op, char* decodedData, unsigned int* encodedBuffLengths, unsigned int* nThreads, unsigned int thid, unsigned int* cache, unsigned int stripCacheLength)
 {
+    struct unsorted_node_map_dec* table;
     char* ch = (char*)malloc(sizeof(char));
     for (unsigned int i = 1; i < ALPHABET_LEN; i++) {
         ch[0] = char(i);
-        push_into_table_dec(i, ch, 1);
+        table = push_into_table_dec(table, i, ch, 1);
     }
     free(ch);
 
@@ -225,7 +207,7 @@ __device__ unsigned int decoding_lzw(unsigned int* op, char* decodedData, unsign
     loadDecodingCache(cache, stripCacheLength, 0, op, encodedBuffLengths[thid], thid);
     old = cache[stripCacheLength * thid];
     cacheOffset = 1;
-    struct unsorted_node_map_dec* temp_node, * s_node = find_by_code_dec(old);
+    struct unsorted_node_map_dec* temp_node, * s_node = find_by_code_dec(table, old);
     int temp_length = 0, s_length = s_node->tokenSize;
     char* s = (char*)malloc(MAX_TOKEN_SIZE * sizeof(char)), * temp = (char*)malloc(sizeof(char));
     memcpy(s, s_node->token, s_length);
@@ -245,8 +227,8 @@ __device__ unsigned int decoding_lzw(unsigned int* op, char* decodedData, unsign
         }
         n = cache[stripCacheLength * thid + nextCacheIndex];
         //printf("th=%d i=%d accessing cache[%d] = %d\n", thid, i, stripCacheLength * thid + nextCacheIndex, cache[stripCacheLength * thid + nextCacheIndex]);
-        if (find_by_token_dec(s, s_length) == NULL) {
-            s_node = find_by_code_dec(old);
+        if (find_by_code_dec(table, n) == NULL) {
+            s_node = find_by_code_dec(table, old);
             s_length = s_node->tokenSize;
             s_length++;
             memcpy(s, s_node->token, s_length - 1);
@@ -254,7 +236,7 @@ __device__ unsigned int decoding_lzw(unsigned int* op, char* decodedData, unsign
             s[s_length] = '\0';
         }
         else {
-            s_node = find_by_code_dec(n);
+            s_node = find_by_code_dec(table, n);
             if (s_node->tokenSize != s_length) {
                 s_length = s_node->tokenSize;
                 s[s_length] = '\0';
@@ -264,20 +246,20 @@ __device__ unsigned int decoding_lzw(unsigned int* op, char* decodedData, unsign
         memcpy(&decodedData[decodedDataLength], s, s_length);
         decodedDataLength += s_length;
         c = s[0];
-        temp_node = find_by_code_dec(old);
+        temp_node = find_by_code_dec(table, old);
         if (temp_length != temp_node->tokenSize + 1) {
             temp_length = temp_node->tokenSize + 1;
             temp[temp_length] = '\0';
         }
         memcpy(temp, temp_node->token, temp_length - 1);
         temp[temp_length - 1] = c;
-        push_into_table_dec(count, temp, temp_length);
+        table = push_into_table_dec(table, count, temp, temp_length);
         count++;
         old = n;
     }
     free(temp);
     free(s);
-    dispose_table_dec();
+    dispose_table_dec(table);
     return decodedDataLength;
 }
 
@@ -301,7 +283,7 @@ __global__ void encoding(char *input, unsigned int *inputLength, unsigned int *e
     }
     for (unsigned int i = 0; i < encodedBuffLengths[thid]; i++) {
         encodedData[encOffset + i] = encodedDataBuff[i];
-        printf("th%d i=%d  %d\n", thid, i, encodedDataBuff[i]);
+        //printf("th%d i=%d  %d\n", thid, i, encodedDataBuff[i]);
     }
 
 }
@@ -328,7 +310,7 @@ __global__ void decoding(unsigned int* encodedData, unsigned int* encodedBuffLen
 
     for (unsigned int i = 0; i < dataBuffLength; i++) {
         decodedData[*nThreads * i + thid] = decodedDataBuff[i];
-        printf("th%d i=%d  %d\n", thid, i, decodedDataBuff[i]);
+        //printf("th%d i=%d  %d\n", thid, i, decodedDataBuff[i]);
     }
 
     //delete[] decodedDataBuff;

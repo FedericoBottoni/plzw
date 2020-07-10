@@ -78,29 +78,6 @@ inline struct unsorted_node_map_dec* find_by_code_dec(unsigned int id) {
     return s;
 }
 
-inline struct unsorted_node_map_dec* find_by_token_dec(char* token, short tokenSize) {
-    struct unsorted_node_map_dec* node, * tmp;
-    bool equals;
-    HASH_ITER(hh, table_dec, node, tmp) {
-        equals = true;
-        if (tokenSize != node->tokenSize) {
-            equals = false;
-        }
-        else {
-            for (short i = 0; i < tokenSize; i++) {
-                if (token[i] != node->token[i]) {
-                    equals = false;
-                    break;
-                }
-            }
-        }
-        if (equals) {
-            return node;
-        }
-    }
-    return NULL;
-}
-
 inline void dispose_table_dec() {
     struct unsorted_node_map_dec* node, * tmp;
 
@@ -189,7 +166,7 @@ inline unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedD
     int count = ALPHABET_LEN;
     for (int i = 0; i < op_length - 1; i++) {
         n = op[i + 1];
-        if (find_by_token_dec(s, s_length) == NULL) {
+        if (find_by_code_dec(n) == NULL) {
             s_node = find_by_code_dec(old);
             s_length = s_node->tokenSize;
             s = (char*)realloc(s, (++s_length + 1) * sizeof(char));
