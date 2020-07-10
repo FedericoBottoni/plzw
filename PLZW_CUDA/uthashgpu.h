@@ -150,7 +150,7 @@ __device__ size_t my_memcmp(const void* cs_in, const void* ct_in, size_t n) {
 /* malloc failures result in lost memory, hash tables are unusable */
 
 #ifndef uthash_fatal
-#define uthash_fatal(msg) printf("Trying to exit")        /* fatal OOM error */
+#define uthash_fatal(msg) printf("Trying to exit\n")        /* fatal OOM error */
 #endif
 
 #define HASH_RECORD_OOM(oomed) uthash_fatal("out of memory")
@@ -545,7 +545,7 @@ do {                                                                            
  */
 #ifdef HASH_DEBUG
 #include <stdio.h>   /* fprintf, stderr */
-#define HASH_OOPS(...) do { fprintf(stderr, __VA_ARGS__); printf("Trying to exit"); } while (0)
+#define HASH_OOPS(...) do { fprintf(stderr, __VA_ARGS__); printf("Trying to exit\n"); } while (0)
 #define HASH_FSCK(hh,head,where)                                                 \
 do {                                                                             \
   struct UT_hash_handle *_thh;                                                   \
