@@ -10,7 +10,7 @@
 #define IN_PATH "F:\\Dev\\PLZW\\in.txt"
 #define ALPHABET_LEN 256
 #define WARPSIZE 32
-#define DEFAULT_NBLOCKS 2
+#define DEFAULT_NBLOCKS 8
 #define SHAREDMEM_MAX 256
 #define MAX_TOKEN_SIZE 100
 #define CUDA_WARN(XXX) \
@@ -38,7 +38,6 @@ struct unsorted_node_map_dec {
 __device__ unsorted_node_map* push_into_table(unsorted_node_map* table, char* id, short tokenSize, unsigned int code) {
     struct unsorted_node_map* s = (struct unsorted_node_map*)malloc(sizeof * s);
     char* curr_token = (char*)malloc((tokenSize + 1) * sizeof(char));
-    //printf("%s %d", id, code);
     memcpy(curr_token, id, sizeof(char)*tokenSize);
     curr_token[tokenSize] = '\0';
     s->id = curr_token;
@@ -296,6 +295,8 @@ int main()
         // prop.sharedMemPerBlock; // 49152 bytes per block for GTX 1070 (capability 6.1)
         // prop.maxGridSize[0]; // 2147483647 blocks for GTX 1070 (capability 6.1)
         // prop.warpSize; // 32
+
+        CUDA_WARN(cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1000000000 * sizeof(char))); // Allow 1Gb
     }
     else {
         cout << "No device detected" << endl;
@@ -322,6 +323,7 @@ int main()
     char* dev_input;
     const char* input_point = input.c_str();
 
+    cout << "Encoding -- \n";
     std::chrono::steady_clock::time_point encoding_begin, encoding_end, decoding_begin, decoding_end;
     encoding_begin = std::chrono::steady_clock::now();
     nBlocks = DEFAULT_NBLOCKS;
@@ -373,6 +375,8 @@ int main()
     //for (unsigned int i = 0; i < encodedLength; i++) printf("%d ", encodedData[i]);
     char* decodedData = (char*)malloc(inputSize);
     unsigned int* decodedBuffLengths = (unsigned int*)malloc(nThreads * sizeof(unsigned int));
+
+    cout << "Decoding -- \n";
     decoding_begin = std::chrono::steady_clock::now(); 
     char* dev_decodedData;
     unsigned int *dev_decodedBuffLengths, decodedDataLength = 0, *dev_inputLength;
@@ -407,6 +411,7 @@ int main()
 
     decoding_end = std::chrono::steady_clock::now();
 
+    cout << "Checking -- \n";
     if (inputLength == decodedDataLength) {
         for (unsigned int j = 0; j < inputLength; j++) {
             correctness = input[j] == decodedData[j];
