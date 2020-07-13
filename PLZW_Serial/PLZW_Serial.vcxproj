@@ -139,7 +139,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="lzw.h" />
     <ClCompile Include="PLZW_Serial.cpp" />
   </ItemGroup>
   <ItemGroup>

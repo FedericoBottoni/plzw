@@ -4,7 +4,7 @@
 #include <chrono>
 // #include "lzw.h"
 #include "../dependencies/uthash.h"
-#define IN_PATH "F:\\Dev\\PLZW\\in.txt"
+#define IN_PATH "F:\\Dev\\PLZW\\in\\in"
 #define ALPHABET_LEN 256
 
 
@@ -24,8 +24,8 @@ struct unsorted_node_map_dec {
     UT_hash_handle hh; /* makes this structure hashable */
 };
 
-extern struct unsorted_node_map* table;
-extern struct unsorted_node_map_dec* table_dec;
+struct unsorted_node_map* table;
+struct unsorted_node_map_dec* table_dec;
 
 void push_into_table(char* id, short tokenSize, unsigned int code) {
     struct unsorted_node_map* s = (struct unsorted_node_map*)malloc(sizeof * s);

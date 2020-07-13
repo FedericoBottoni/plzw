@@ -18,7 +18,7 @@
     <CudaCompile Include="PLZW_CUDA.cu" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="uthashgpu.h">
+    <ClInclude Include="..\dependencies\uthashgpu.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

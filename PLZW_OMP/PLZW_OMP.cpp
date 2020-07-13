@@ -7,11 +7,10 @@
 #include <fstream>
 #include <string>
 #include <chrono>
-// #include "..\PLZW_Serial\lzw.h"
 #include "../dependencies/uthash.h"
-#define IN_PATH "F:\\Dev\\PLZW\\in.txt"
+#define IN_PATH "F:\\Dev\\PLZW\\in\\in"
 #define ALPHABET_LEN 256
-#define DEFAULT_NPROCS 4
+#define DEFAULT_NPROCS 3
 
 using namespace std;
 
