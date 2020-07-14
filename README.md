@@ -31,13 +31,21 @@ $ PLZW_Serial.exe
 ```
 
 ### MPI
+You can edit the number of processes from CLI, changing "-np 4" in "-np {number}"
 ```sh
 $ mpiexec -np 4 PLZW_MPI.exe
 ```
 
 ### OpenMP
+You can edit the number of processes defining DEFAULT_NPROCS
 ```sh
 $ PLZW_OMP.exe
+```
+
+### CUDA
+You can edit the grid and blocks sizes defining BLOCKS_GRID and THREADS_A_BLOCK
+```sh
+$ PLZW_CUDA.exe
 ```
 
 ## Author
