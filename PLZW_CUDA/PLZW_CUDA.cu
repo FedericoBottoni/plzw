@@ -1,3 +1,5 @@
+// PLZW_CUDA.exe
+
 #include <iostream>
 #include <fstream>
 #include <chrono>
@@ -115,7 +117,7 @@ __device__ void loadDecodingCache(unsigned int* cache, unsigned int stripCacheLe
     __syncthreads();
 }
 
-__device__ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode, unsigned int avgRng, unsigned int* nThreads, unsigned int thid, unsigned int thid_block, char* cache, unsigned int stripCacheLength)
+__device__ unsigned int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode, unsigned int avgRng, unsigned int* nThreads, unsigned int thid, unsigned int thid_block, char* cache, unsigned int stripCacheLength)
 {
     // Init hashmap with ASCII alphabet
     struct unsorted_node_map* table = NULL;
@@ -424,7 +426,7 @@ int main()
     // Timer START
     decoding_begin = std::chrono::steady_clock::now();
 
-    // Declaration and definition of the needed variable (skipping the initialization of input variables)
+    // Declaration and definition of the needed variables (skipping the initialization of input variables)
     char* dev_decodedData, *decodedData;
     unsigned int* decodedBuffLengths, *dev_decodedBuffLengths, decodedDataLength, *dev_inputLength;
     decodedData = (char*)malloc(inputSize);
@@ -484,7 +486,7 @@ int main()
     // Logging the performances
     cout << "Lossless propriety: " << correctness;
     cout <<
-        "\nChars: " << inputLength << "  Memory: " << inputLength * sizeof(char) << " bytes (char8s)" <<
+        "\nChars: " << inputLength << "  Memory: " << inputLength * sizeof(char) << " bytes (char8)" <<
         "\nEncoded: " << encodedLength << "  Memory: " << encodedLength * sizeof(unsigned int) << " bytes (uint32)" << endl;
     cout << "Encoding time: " << std::chrono::duration_cast<std::chrono::milliseconds> (encoding_end - encoding_begin).count() << "[ms]" << std::endl;
     cout << "Decoding time: " << std::chrono::duration_cast<std::chrono::milliseconds> (decoding_end - decoding_begin).count() << "[ms]" << std::endl;

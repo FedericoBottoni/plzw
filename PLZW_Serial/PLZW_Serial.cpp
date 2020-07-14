@@ -1,8 +1,9 @@
+// PLZW_Serial.exe
+
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <chrono>
-// #include "lzw.h"
 #include "../dependencies/uthash.h"
 #define IN_PATH "F:\\Dev\\PLZW\\in\\in"
 #define ALPHABET_LEN 256
@@ -10,6 +11,7 @@
 
 using namespace std;
 
+// Hashmap struct for encoder
 struct unsorted_node_map {
     char* id; // key
     unsigned int code;
@@ -17,6 +19,7 @@ struct unsorted_node_map {
     UT_hash_handle hh; /* makes this structure hashable */
 };
 
+// Hashmap struct for decoder
 struct unsorted_node_map_dec {
     unsigned int id; // key
     char* token;
@@ -24,9 +27,11 @@ struct unsorted_node_map_dec {
     UT_hash_handle hh; /* makes this structure hashable */
 };
 
+// Declaration of hashmaps
 struct unsorted_node_map* table;
 struct unsorted_node_map_dec* table_dec;
 
+// Push token-code to the existing hashmap
 void push_into_table(char* id, short tokenSize, unsigned int code) {
     struct unsorted_node_map* s = (struct unsorted_node_map*)malloc(sizeof * s);
     char* curr_token = (char*)malloc((tokenSize + 1) * sizeof(char));
@@ -38,6 +43,7 @@ void push_into_table(char* id, short tokenSize, unsigned int code) {
     HASH_ADD_KEYPTR(hh, table, s->id, tokenSize, s);
 }
 
+// Hashmap lookup method
 struct unsorted_node_map* find_by_token(char* id, short length) {
     struct unsorted_node_map* s;
     id[length] = '\0';
@@ -45,16 +51,7 @@ struct unsorted_node_map* find_by_token(char* id, short length) {
     return s;
 }
 
-struct unsorted_node_map* find_by_code(unsigned int code) {
-    struct unsorted_node_map* node, * tmp;
-    HASH_ITER(hh, table, node, tmp) {
-        if (node->code == code) {
-            return node;
-        }
-    }
-    return NULL;
-}
-
+// Deallocation of the entire hashmap
 void dispose_table() {
     struct unsorted_node_map* node, * tmp;
 
@@ -65,6 +62,7 @@ void dispose_table() {
     }
 }
 
+// Push token-code to the existing hashmap
 void push_into_table_dec(unsigned int id, char* token, short tokenSize) {
     struct unsorted_node_map_dec* s = (struct unsorted_node_map_dec*)malloc(sizeof * s);
     char* curr_token = (char*)malloc((tokenSize + 1) * sizeof(char));
@@ -76,12 +74,14 @@ void push_into_table_dec(unsigned int id, char* token, short tokenSize) {
     HASH_ADD_INT(table_dec, id, s);
 }
 
+// Hashmap lookup method
 struct unsorted_node_map_dec* find_by_code_dec(unsigned int id) {
     struct unsorted_node_map_dec* s;
     HASH_FIND_INT(table_dec, &id, s);
     return s;
 }
 
+// Deallocation of the entire hashmap
 void dispose_table_dec() {
     struct unsorted_node_map_dec* node, * tmp;
 
@@ -92,8 +92,9 @@ void dispose_table_dec() {
     }
 }
 
-int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
+unsigned int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
 {
+    // Init hashmap with ASCII alphabet
     char* ch = (char*)malloc(sizeof(char));
     for (unsigned int i = 1; i < ALPHABET_LEN; i++) {
         ch[0] = char(i);
@@ -101,16 +102,20 @@ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
     }
     free(ch);
 
+    // Definition and assignation of LZW_encoder variables
     unsorted_node_map* node;
-    int out_index = 0, pLength;
+    unsigned int code = ALPHABET_LEN, out_index = 0, pLength = 1;
     char* p = (char*)malloc(2 * sizeof(char)), * pandc = (char*)malloc(3 * sizeof(char)), * c = new char[1];
     p[0] = s1[0];
     p[1] = '\0';
     pandc[2] = '\0';
-    pLength = 1;
-    unsigned int code = ALPHABET_LEN;
-    unsigned int i;
-    for (i = 0; i < count; i++) {
+
+    // Iterating through all the input buffer
+    for (unsigned int i = 0; i < count; i++) {
+
+        // Gather from hashmap 'p_c' concatenated token: if it exists save it and go on with the algorithm; otherwise
+        // get just the 'p' value, add it to outcome and add p_c to hashmap.
+        // p and p_c are reallocated in order to take up as little memory as possible
         if (i != count - 1)
             c[0] = s1[i + 1];
         for (unsigned short str_i = 0; str_i < pLength; str_i++) pandc[str_i] = p[str_i];
@@ -149,6 +154,7 @@ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
 
 unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
 {
+    // Init hashmap with ASCII alphabet
     char* ch = (char*)malloc(sizeof(char));
     for (unsigned int i = 1; i < ALPHABET_LEN; i++) {
         ch[0] = char(i);
@@ -156,7 +162,8 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
     }
     free(ch);
 
-    unsigned int old = op[0], decodedDataLength, n;
+    // Assignation of variables from encoded input and s_node from hasmap
+    unsigned int old = op[0], decodedDataLength, n, count = ALPHABET_LEN;
     struct unsorted_node_map_dec* temp_node, * s_node = find_by_code_dec(old);
     int temp_length = 0, s_length = s_node->tokenSize;
     char* s = (char*)malloc((s_length + 1) * sizeof(char)), * temp = (char*)malloc(sizeof(char));
@@ -164,12 +171,16 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
     s[s_length] = '\0';
     temp[0] = '\0';
     char c = s[0];
-
     memcpy(decodedData, s, s_length);
     decodedDataLength = 1;
-    int count = ALPHABET_LEN;
+
+    // Iterating through all the encoded buffer
     for (int i = 0; i < op_length - 1; i++) {
+
+        // Gather the next value from encoded input
         n = op[i + 1];
+
+        // Decoding the old value if the next is new or keep the next one if it's known and realloc s
         if (find_by_code_dec(n) == NULL) {
             s_node = find_by_code_dec(old);
             s_length = s_node->tokenSize;
@@ -187,8 +198,12 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
             }
             memcpy(s, s_node->token, s_length);
         }
+
+        // Update outcome array
         memcpy(&decodedData[decodedDataLength], s, s_length);
         decodedDataLength += s_length;
+
+        // Push the new token to the hashmap and realloc temp if length is changed
         c = s[0];
         temp_node = find_by_code_dec(old);
         if (temp_length != temp_node->tokenSize + 1) {
@@ -202,6 +217,8 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
         count++;
         old = n;
     }
+
+    // Deallocations
     free(temp);
     free(s);
     dispose_table_dec();
@@ -210,8 +227,8 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
 
 int main()
 {
-    string input;
-    string line;
+    // Read dataset from file
+    string line, input;
     ifstream inFile;
     bool correctness = true;
     inFile.open(IN_PATH);
@@ -224,26 +241,37 @@ int main()
     }
     inFile.close();
 
-    unsigned int inputLength = input.length();
-    unsigned int* encodedData = (unsigned int*)malloc(inputLength * sizeof(unsigned int));
+    // Declaration of timers and START
+    std::chrono::steady_clock::time_point encoding_begin, encoding_end, decoding_begin, decoding_end;
+    encoding_begin = std::chrono::steady_clock::now();
 
-    std::chrono::steady_clock::time_point encoding_begin = std::chrono::steady_clock::now();
+    // Initialization of input and output variables
+    unsigned int inputLength, *encodedData, encodedLength;
     const char* input_point = input.c_str();
-    unsigned int encodedLength = encoding_lzw(input_point, input.length(), encodedData);
-    std::chrono::steady_clock::time_point encoding_end = std::chrono::steady_clock::now();
+    inputLength = input.length();
+    encodedData = (unsigned int*)malloc(inputLength * sizeof(unsigned int));
 
-    encodedData = (unsigned int*)realloc(encodedData, (encodedLength) * sizeof(unsigned int));
+    // Function encoding call
+    encodedLength = encoding_lzw(input_point, input.length(), encodedData);
+ 
+    // Timer STOP
+    encoding_end = std::chrono::steady_clock::now();
+
+    // Skipping the export of encoded data and the reimport
+
+    // Timer START
+    decoding_begin = std::chrono::steady_clock::now();
+
+    // Declaration and definition of the needed variable (skipping the initialization of input variables)
     char* decodedData = (char*)malloc(inputLength * sizeof(char));
-    //for (unsigned int j = 0; j < encodedLength; j++) {
-    //    cout << encodedData[j] << " ";
-    //}
 
-    std::chrono::steady_clock::time_point decoding_begin = std::chrono::steady_clock::now();
+    // Function decoding call
     unsigned int decodedDataLength = decoding_lzw(encodedData, encodedLength, decodedData);
-    std::chrono::steady_clock::time_point decoding_end = std::chrono::steady_clock::now();
 
-    // cout << decodedData << "\n\n";
-    
+    // Timer STOP
+    decoding_end = std::chrono::steady_clock::now();
+
+    // Checking the correctness of lossless propriety
     if (inputLength == decodedDataLength) {
         for (unsigned int j = 0; j < inputLength; j++) {
             correctness = input[j] == decodedData[j];
@@ -256,16 +284,16 @@ int main()
         correctness = 0;
     }
 
+    // Logging the performances
     cout << "Lossless propriety: " << correctness;
-
     cout <<
-        "\nChars: " << inputLength << "  Memory: " << inputLength * sizeof(char) << " bytes" <<
-        "\nEncoded: " << encodedLength << "  Memory: " << encodedLength * sizeof(unsigned int) << " bytes" << endl;
-
-
+        "\nChars: " << inputLength << "  Memory: " << inputLength * sizeof(char) << " bytes (char8)" <<
+        "\nEncoded: " << encodedLength << "  Memory: " << encodedLength * sizeof(unsigned int) << " bytes (uint32)" << endl;
     cout << "Encoding time: " << std::chrono::duration_cast<std::chrono::milliseconds> (encoding_end - encoding_begin).count() << "[ms]" << std::endl;
     cout << "Decoding time: " << std::chrono::duration_cast<std::chrono::milliseconds> (decoding_end - decoding_begin).count() << "[ms]" << std::endl;
 
+    // Deallocation of encoded and decoded arrays
     free(encodedData);
+    free(decodedData);
     return 0;
 }

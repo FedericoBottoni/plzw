@@ -1,8 +1,6 @@
 // mpiexec -np 4 PLZW_MPI.exe
 
 #include <mpi.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -11,10 +9,9 @@
 #define IN_PATH "F:\\Dev\\PLZW\\in\\in"
 #define ALPHABET_LEN 256
 
-
-
 using namespace std;
 
+// Hashmap struct for encoder
 struct unsorted_node_map {
     char* id; // key
     unsigned int code;
@@ -22,6 +19,7 @@ struct unsorted_node_map {
     UT_hash_handle hh; /* makes this structure hashable */
 };
 
+// Hashmap struct for decoder
 struct unsorted_node_map_dec {
     unsigned int id; // key
     char* token;
@@ -29,9 +27,11 @@ struct unsorted_node_map_dec {
     UT_hash_handle hh; /* makes this structure hashable */
 };
 
+// Declaration of hashmaps
 struct unsorted_node_map* table;
 struct unsorted_node_map_dec* table_dec;
 
+// Push token-code to the existing hashmap
 void push_into_table(char* id, short tokenSize, unsigned int code) {
     struct unsorted_node_map* s = (struct unsorted_node_map*)malloc(sizeof * s);
     char* curr_token = (char*)malloc((tokenSize + 1) * sizeof(char));
@@ -43,22 +43,14 @@ void push_into_table(char* id, short tokenSize, unsigned int code) {
     HASH_ADD_KEYPTR(hh, table, s->id, tokenSize, s);
 }
 
+// Hashmap lookup method
 struct unsorted_node_map* find_by_token(char* id, short length) {
     struct unsorted_node_map* s;
     HASH_FIND_STR(table, id, s);
     return s;
 }
 
-struct unsorted_node_map* find_by_code(unsigned int code) {
-    struct unsorted_node_map* node, * tmp;
-    HASH_ITER(hh, table, node, tmp) {
-        if (node->code == code) {
-            return node;
-        }
-    }
-    return NULL;
-}
-
+// Deallocation of the entire hashmap
 void dispose_table() {
     struct unsorted_node_map* node, * tmp;
 
@@ -69,6 +61,7 @@ void dispose_table() {
     }
 }
 
+// Push token-code to the existing hashmap
 void push_into_table_dec(unsigned int id, char* token, short tokenSize) {
     struct unsorted_node_map_dec* s = (struct unsorted_node_map_dec*)malloc(sizeof * s);
     char* curr_token = (char*)malloc((tokenSize + 1) * sizeof(char));
@@ -80,12 +73,14 @@ void push_into_table_dec(unsigned int id, char* token, short tokenSize) {
     HASH_ADD_INT(table_dec, id, s);
 }
 
+// Hashmap lookup method
 struct unsorted_node_map_dec* find_by_code_dec(unsigned int id) {
     struct unsorted_node_map_dec* s;
     HASH_FIND_INT(table_dec, &id, s);
     return s;
 }
 
+// Deallocation of the entire hashmap
 void dispose_table_dec() {
     struct unsorted_node_map_dec* node, * tmp;
 
@@ -96,8 +91,9 @@ void dispose_table_dec() {
     }
 }
 
-int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
+unsigned int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
 {
+    // Init hashmap with ASCII alphabet
     table = NULL;
     char* ch = (char*)malloc(sizeof(char));
     for (unsigned int i = 0; i < ALPHABET_LEN; i++) {
@@ -106,18 +102,24 @@ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
     }
     free(ch);
 
+    // Definition and assignation of LZW_encoder variables (realloc of dynamic variables is allowed)
     unsorted_node_map* node;
-    int out_index = 0, pLength;
+    unsigned int code = ALPHABET_LEN, out_index = 0, pLength = 1;
     char* p = (char*)malloc(2 * sizeof(char)), * pandc = (char*)malloc(3 * sizeof(char)), * c = new char[1];
     p[0] = s1[0];
     p[1] = '\0';
     pandc[2] = '\0';
-    pLength = 1;
-    unsigned int code = ALPHABET_LEN;
-    unsigned int i;
-    for (i = 0; i < count; i++) {
+
+    // Iterating through all the input buffer
+    for (unsigned int i = 0; i < count; i++) {
+
+        // Gather the next value from input
         if (i != count - 1)
             c[0] = s1[i + 1];
+
+        // Gather from hashmap 'p_c' concatenated token: if it exists save it and go on with the algorithm; otherwise
+        // get just the 'p' value, add it to outcome and add p_c to hashmap.
+        // p and p_c are reallocated in order to take up as little memory as possible
         for (unsigned short str_i = 0; str_i < pLength; str_i++) pandc[str_i] = p[str_i];
         pandc[pLength] = c[0];
         unsorted_node_map* node = find_by_token(pandc, pLength + 1);
@@ -144,8 +146,9 @@ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
         }
         c[0] = NULL;
     }
-    objectCode[out_index++] = find_by_token(p, pLength)->code;
 
+    // Get last value and deallocate
+    objectCode[out_index++] = find_by_token(p, pLength)->code;
     free(p);
     free(pandc);
     dispose_table();
@@ -154,6 +157,7 @@ int encoding_lzw(const char* s1, unsigned int count, unsigned int* objectCode)
 
 unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
 {
+    // Init hashmap with ASCII alphabet
     char* ch = (char*)malloc(sizeof(char));
     for (unsigned int i = 1; i < ALPHABET_LEN; i++) {
         ch[0] = char(i);
@@ -161,20 +165,25 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
     }
     free(ch);
 
-    unsigned int old = op[0], decodedDataLength, n;
+    // Assignation of variables from encoded input and s_node from hasmap
+    unsigned int decodedDataLength, n, s_length, old = op[0], temp_length = 0, count = ALPHABET_LEN;
     struct unsorted_node_map_dec* temp_node, * s_node = find_by_code_dec(old);
-    int temp_length = 0, s_length = s_node->tokenSize;
+    s_length = s_node->tokenSize;
     char* s = (char*)malloc((s_length + 1) * sizeof(char)), * temp = (char*)malloc(sizeof(char));
     memcpy(s, s_node->token, s_length);
     s[s_length] = '\0';
     temp[0] = '\0';
     char c = s[0];
-
     memcpy(decodedData, s, s_length);
     decodedDataLength = 1;
-    int count = ALPHABET_LEN;
+
+    // Iterating through all the encoded buffer
     for (int i = 0; i < op_length - 1; i++) {
+
+        // Gather the next value from encoded input
         n = op[i + 1];
+
+        // Decoding the old value if the next is new or keep the next one if it's known and realloc s
         if (find_by_code_dec(n) == NULL) {
             s_node = find_by_code_dec(old);
             s_length = s_node->tokenSize;
@@ -192,8 +201,12 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
             }
             memcpy(s, s_node->token, s_length);
         }
+
+        // Update outcome array
         memcpy(&decodedData[decodedDataLength], s, s_length);
         decodedDataLength += s_length;
+
+        // Push the new token to the hashmap and realloc temp if length is changed
         c = s[0];
         temp_node = find_by_code_dec(old);
         if (temp_length != temp_node->tokenSize + 1) {
@@ -207,6 +220,8 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
         count++;
         old = n;
     }
+
+    // Deallocations
     free(temp);
     free(s);
     dispose_table_dec();
@@ -214,28 +229,26 @@ unsigned int decoding_lzw(unsigned int* op, int op_length, char* decodedData)
 }
 
 unsigned int encoding(string input, int inputLength, int rank, int size, int root, unsigned int* encodedData, int* encStartPos) {
-
-    unsigned int avgRng, receiveCount;
-    unsigned int* startPoint;
-    int* counts;
-    char* inputBuf;
-
-    startPoint = new unsigned int[size];
-    counts = new int[size];
-
+    // Assignation of inputs and definition of variables
+    unsigned int avgRng, receiveCount, * startPoint, encodedLength;
+    int* counts = (int*)malloc(size * sizeof(int));
+    startPoint = (unsigned int*)malloc(size * sizeof(unsigned int));
     avgRng = inputLength / size;
     receiveCount = avgRng;
     if (rank == size - 1) {
         receiveCount = inputLength - (size - 1) * avgRng;
     }
-    inputBuf = new char[receiveCount];
+    char* inputBuf = (char*)malloc(receiveCount * sizeof(char));
 
+    // Calculation of segmentation indexes and lengths
     for (unsigned short p = 0; p < size; p++) {
         startPoint[p] = avgRng * p;
         counts[p] = avgRng;
         encStartPos[p] = avgRng * p;
     }
     counts[size - 1] = inputLength - (size - 1) * avgRng;
+
+    // Perform segmentation
     MPI_Scatterv(
         input.c_str(),
         counts,
@@ -247,16 +260,18 @@ unsigned int encoding(string input, int inputLength, int rank, int size, int roo
         root,
         MPI_COMM_WORLD);
 
-    unsigned int* encodedDataBuff = new unsigned int[receiveCount];
-    int* encodedLengthBuffs = new int[size];
+    // Defininition of output buffers
+    unsigned int* encodedDataBuff = (unsigned int*)malloc(receiveCount * sizeof(unsigned int));
+    int* encodedLengthBuffs = (int*)malloc(receiveCount * sizeof(int));
 
+    // LZW_encoding call
     unsigned int encodedLengthBuff = encoding_lzw(inputBuf, receiveCount, encodedDataBuff);
 
+    // Spread of the buffer lengths between processes
     for (unsigned short p = 0; p < size; p++) {
         counts[p] = 1;
         encStartPos[p] = p;
     }
-
     MPI_Allgather(
         &encodedLengthBuff,
         1,
@@ -266,12 +281,14 @@ unsigned int encoding(string input, int inputLength, int rank, int size, int roo
         MPI_INT,
         MPI_COMM_WORLD);
 
-    unsigned int encodedLength = 0;
-    for (unsigned short p = 0; p < size; p++) {
+    // Calculation of output length and the start position of each strip of codes
+    encodedLength = 0;
+    for (short p = 0; p < size; p++) {
         encStartPos[p] = encodedLength;
         encodedLength += encodedLengthBuffs[p];
     }
 
+    // Master process gathers the outputs and build the single output array
     MPI_Gatherv(
         encodedDataBuff,
         encodedLengthBuff,
@@ -283,28 +300,35 @@ unsigned int encoding(string input, int inputLength, int rank, int size, int roo
         root,
         MPI_COMM_WORLD);
 
-    delete[] encodedDataBuff; 
-    delete[] encodedLengthBuffs;
-    delete[] startPoint;
-    delete[] counts; 
-    delete[] inputBuf;
-
+    // Deallocations
+    free(encodedDataBuff);
+    free(encodedLengthBuffs);
+    free(startPoint);
+    free(counts); 
+    free(inputBuf);
     return encodedLength;
 }
 
 unsigned int decoding(unsigned int* encodedData, int encodedLength, int* encStartPos, int rank, int size, int root, char* decodedData, unsigned int decodedExpectedLength) {
-    int decodedLengthBuff, encodedLengthBuff, * decodedLengthBuffs = new int[size], *counts = new int[size];
-    unsigned int decodedLength, dataBuffLength, avgRng = decodedExpectedLength / size;
+    // Definition of output and other variables
+    int encodedLengthBuff, * decodedLengthBuffs, *counts;
+    unsigned int decodedLengthBuff, decodedLength, dataBuffLength, *encodedDataBuff, avgRng = decodedExpectedLength / size;
     dataBuffLength = rank != size - 1 ? avgRng : decodedExpectedLength - (avgRng * (size - 1));
+    decodedLengthBuffs = (int*)malloc(size * sizeof(int));
+    counts = (int*)malloc(size * sizeof(int));
     char* decodedBuff = (char*)malloc(dataBuffLength * sizeof(char));
+
+    // Calculation of segmentation lengths
     for (unsigned short p = 0; p < size - 1; p++) {
         counts[p] = encStartPos[p + 1] - encStartPos[p];
     }
     counts[size - 1] = encodedLength - encStartPos[size - 1];
 
+    // Definition of input buffers
     encodedLengthBuff = counts[rank];
-    unsigned int* encodedDataBuff = new unsigned int[encodedLengthBuff];
+    encodedDataBuff = (unsigned int*)malloc(encodedLengthBuff * sizeof(unsigned int));
 
+    // Perform segmentation
     MPI_Scatterv(
         encodedData,
         counts,
@@ -316,8 +340,10 @@ unsigned int decoding(unsigned int* encodedData, int encodedLength, int* encStar
         root,
         MPI_COMM_WORLD);
 
+    // LZW_decoding call
     decodedLengthBuff = decoding_lzw(encodedDataBuff, counts[rank], decodedBuff);
 
+    // Spread of the buffer lengths between processes
     MPI_Allgather(
         &decodedLengthBuff,
         1,
@@ -328,12 +354,14 @@ unsigned int decoding(unsigned int* encodedData, int encodedLength, int* encStar
         MPI_COMM_WORLD);
 
 
+    // Calculation of output length and the start position of each strip of codes
     decodedLength = 0;
-    for (unsigned short p = 0; p < size; p++) {
+    for (short p = 0; p < size; p++) {
         encStartPos[p] = decodedLength;
         decodedLength += decodedLengthBuffs[p];
     }
 
+    // Master process gathers the outputs and build the single output array
     MPI_Gatherv(
         decodedBuff,
         decodedLengthBuff,
@@ -345,27 +373,34 @@ unsigned int decoding(unsigned int* encodedData, int encodedLength, int* encStar
         root,
         MPI_COMM_WORLD);
 
+    // Deallocations
     free(decodedBuff);
-    delete[] decodedLengthBuffs;
-    delete[] encodedDataBuff;
-    delete[] counts;
+    free(decodedLengthBuffs);
+    free(encodedDataBuff);
+    free(counts);
     return decodedLength;
 }
 
 int main()
 {
+    // Initialization of MPI
     int size, rank;
     int root = 0;
     MPI_Init(NULL, NULL);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    // Input and timer declaration
     string input;
     unsigned int inputLength;
     std::chrono::steady_clock::time_point encoding_begin, encoding_end, decoding_begin, decoding_end;
-    bool correctness = true;
+    bool correctness;
+
+    // Read dataset from file
     if (rank == root) {
         ifstream inFile;
         inFile.open(IN_PATH);
+        correctness = true;
         if (!inFile) {
             cout << "Unable to open file";
             exit(1);
@@ -377,10 +412,12 @@ int main()
         line.clear();
         inFile.close();
 
-        inputLength = input.length();
+        // Timer START and calculate input size
         encoding_begin = std::chrono::steady_clock::now();
+        inputLength = input.length();
     }
 
+    // Broadcast the input size to each process and definite the output variables
     MPI_Bcast(
         &inputLength,
         1,
@@ -388,34 +425,42 @@ int main()
         root,
         MPI_COMM_WORLD
     );
+    unsigned int* encodedData = (unsigned int*)malloc(inputLength * sizeof(unsigned int));
+    int* encStartPos = (int*)malloc(size * sizeof(int));
 
-    unsigned int* encodedData = new unsigned int[inputLength];
-    int* encStartPos = new int[size];
+    // Function encoding call
     int encodedLength = encoding(input, inputLength, rank, size, root, encodedData, encStartPos);
 
+    // Timer STOP
     if (rank == root) {
         encoding_end = std::chrono::steady_clock::now();
     }
-    /** END ENCODING */
 
+    // Skipping the export of encoded data and the reimport
 
-    /** BEGIN DECODING: params: "encodedData" and "encStartPos" */
+    // Timer START
     if (rank == root) {
         decoding_begin = std::chrono::steady_clock::now();
     }
-    char* decodedData = new char[inputLength];
+
+    // Declaration and definition of the needed variable (skipping the initialization of input variables)
+    char* decodedData = (char*)malloc(inputLength * sizeof(char));
+
+    // Function decoding call
     int decodedLength = decoding(encodedData, encodedLength, encStartPos, rank, size, root, decodedData, inputLength);
+
+    // Timer STOP
     if (rank == root) {
         decoding_end = std::chrono::steady_clock::now();
     }
 
+    // Checking the correctness of lossless propriety
     if (rank == root) {
         if (inputLength == decodedLength) {
             const char* input_point = input.c_str(); 
             for (int i = 0; i < input.length(); i++) {
                 if (input_point[i] != decodedData[i]) {
                     correctness = 0;
-                    cout << "Found mistake in position i=" << i << " input='" << input[i] << "' and decoded='" << decodedData[i] << "'" << endl;
                     break;
                 }
             }
@@ -424,22 +469,20 @@ int main()
             correctness = 0;
         }
 
+        // Logging the performances
         cout << "Lossless propriety: " << correctness;
-
         cout <<
-            "\nChars: " << inputLength << "  Memory: " << inputLength * sizeof(char) << " bytes" <<
-            "\nEncoded: " << encodedLength << "  Memory: " << encodedLength * sizeof(unsigned int) << " bytes" << endl;
-
+            "\nChars: " << inputLength << "  Memory: " << inputLength * sizeof(char) << " bytes (char8)" <<
+            "\nEncoded: " << encodedLength << "  Memory: " << encodedLength * sizeof(unsigned int) << " bytes (uint32)" << endl;
         cout << "Encoding time: " << std::chrono::duration_cast<std::chrono::milliseconds> (encoding_end - encoding_begin).count() << "[ms]" << std::endl;
         cout << "Decoding time: " << std::chrono::duration_cast<std::chrono::milliseconds> (decoding_end - decoding_begin).count() << "[ms]" << std::endl;
 
     }
 
-    delete[] encStartPos;
-    delete[] encodedData;
-    MPI_Barrier(MPI_COMM_WORLD);
-    delete[] decodedData;
-
+    // Deallocation of encoded and decoded arrays + MPI_Finalize
+    free(encStartPos);
+    free(encodedData);
+    free(decodedData);
     MPI_Finalize();
     return 0;
 }
