@@ -43,7 +43,7 @@ $ PLZW_OMP.exe
 ```
 
 ### CUDA
-You can edit the grid and blocks sizes defining BLOCKS_GRID and THREADS_A_BLOCK
+Available in CUDA branch, you can edit the grid and blocks sizes defining BLOCKS_GRID and THREADS_A_BLOCK
 ```sh
 $ PLZW_CUDA.exe
 ```
